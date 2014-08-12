@@ -1,0 +1,548 @@
+#Author: Lucianne Walkowicz, from code written by Revant Nayar
+#This file contains a list of the features calculated in the order in which they appear in the output file "allparameters.txt". 
+#Code snippets are shown currently, with the intent of turning these into written descriptions of each feature. 
+#Code snippets are not intended to work out of the box and are shown for illustration purposes only. 
+
+1. Revantese to English translations
+
+numpdc - this is the PDC_SAP_FLUX array cleaned of NaNs. By analogy, numtime and numerr are the time and error arrays of same, also cleaned of NaNs
+
+the index "i" refers to the index in the entire array of lightcurve files, i.e. "i" goes from 0 to 160000+. I have taken i out whereever it occurs as the calculations for an individual lightcurve are now within a loop that loops over i, rather than every single calculation looping over i (facepalm).
+
+longtermtrend and yoffset - he did a linear fit to the entire lightcurve to capture overall slope, if any-- longtermtrend is the slope of this linear fit, yoffset is the intercept
+
+corrpdc - this is some crazy ass version of normalizing the lightcurve, where hesubtracted off the linear trend computed above from the entire lightcurve. In the rewrite I normalized the flux by the median to begin with, so I've used "nf" (the normalize flux in place of both numpdc and corrpdc. Hopefully that will be ok.  
+
+Features:
+
+1  longtermtrend
+2  meanmedrat
+3  skews
+4  varss 
+5  coeffvar 
+6  stds 
+7  numoutliers 
+8  numnegoutliers 
+9  numposoutliers 
+10 numout1s 
+11 kurt 
+12 mad 
+13 maxslope 
+14 minslope 
+15 meanpslope 
+16 meannslope 
+17 g_asymm
+18 rough_g_asymm 
+19 diff_asymm 
+20 skewslope 
+21 varabsslope 
+22 varslope 
+23 meanabsslope 
+24 absmeansecder 
+25 num_pspikes
+26 num_nspikes 
+27 num_sdspikes # now called "num_psdspikes"
+28 num_sdspikes2 #now called "num_nsdspikes"
+29 stdratio 
+30 pstrend 
+31 num_zcross 
+32 num_pm 
+33 len_nmax 
+34 len_nmin 
+35 mautocorrcoef 
+36 ptpslopes 
+37 periodicity 
+38 periodicityr 
+39 naiveperiod 
+40 maxvars 
+41 maxvarsr 
+42 oeratio 
+43 amp_2
+44 normamp
+45 mbp 
+46 mid20 
+47 mid35 
+48 mid50 
+49 mid65 
+50 mid80 
+51 percentamp 
+52 magratio
+53 sautocorrcoef 
+54 autocorrcoef 
+55 flatmean 
+56 tflatmean 
+57 roundmean 
+58 troundmean 
+59 roundrat 
+60 flatrat
+
+
+longtermtrend, 
+longtermtrend=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+     longtermtrend[i]=np.polyfit(numtime[i], numpdc[i], 1)[0]
+
+meanmedrat, 
+
+"""mean and median flux and relationship"""
+
+means=np.zeros(len(numpdc))  
+
+for i in range(len(numpdc)):
+	means[i]=np.mean(numpdc[i])
+
+medians=np.zeros(len(numpdc))  
+
+for i in range(len(numpdc)):
+	medians[i]=np.median(numpdc[i])
+
+meanmedrat=[means[i]/medians[i] for i in range(len(numpdc))]
+
+
+skews, 
+"""skew"""
+skews=np.zeros(len(numpdc))  
+
+for i in range(len(numpdc)):
+	skews[i]=scipy.stats.skew(numpdc[i])
+
+
+varss, 
+varss=np.zeros(len(numpdc))  
+
+for i in range(len(numpdc)):
+	varss[i]=np.var(numpdc[i])
+
+
+coeffvar, 
+"""Coeff of variability"""
+
+coeffvar=np.zeros(len(numpdc))  
+
+for i in range(len(numpdc)):
+	coeffvar[i]=np.std(numpdc[i])/np.mean(numpdc[i])
+
+
+stds, 
+"""STD"""
+stds=np.zeros(len(numpdc))  
+
+for i in range(len(numpdc)):
+	stds[i]=np.std(numpdc[i])
+
+numoutliers, numnegoutliers, numposoutliers, 
+"""outliers beyond 4 sigma-decent clutering-also try one weighted according to n sigma"""
+
+outliers=[0]*len(numpdc)
+for i in range(len(numpdc)):
+	outliers[i]=[numpdc[i][j] for j in range (len(numpdc[i])) if (numpdc[i][j]>means[i]+4*stds[i]) or (numpdc[i][j]<means[i]-4*stds[i])]  
+
+numoutliers=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	numoutliers[i]=len(outliers[i])
+
+"""these outliers below for transits"""
+
+negoutliers=[0]*len(numpdc)
+for i in range(len(numpdc)):
+	negoutliers[i]=[numpdc[i][j] for j in range (len(numpdc[i])) if (numpdc[i][j]<means[i]-4*stds[i])]  
+
+numnegoutliers=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	numnegoutliers[i]=len(negoutliers[i])
+
+numposoutliers=[numoutliers[i]-numnegoutliers[i] for i in range(len(numpdc))]
+
+numout1s, 
+for i in range(len(numpdc)):
+	out1std[i]=[numpdc[i][j] for j in range (len(numpdc[i])) if (numpdc[i][j]>means[i]+stds[i]) or (numpdc[i][j]<means[i]-stds[i])] 
+for i in range(len(numpdc)):
+	numout1s[i]=len(out1std[i])
+
+
+kurt, """kurtosis"""
+
+kurt=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	kurt[i]=scipy.stats.kurtosis(numpdc[i])
+
+
+mad, 
+"""Median AD (MAD)"""
+
+mad=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	mad[i]=np.median([abs(numpdc[i][j]-medians[i]) for j in range(len(numpdc[i]))])
+
+maxslope, minslope, 
+slopes=[0]*(len(numpdc))
+for i in range(len(numpdc)):    
+	slopes[i]=[(numpdc[i][j+1]-numpdc[i][j])/(numtime[i][j+1]-numtime[i][j]) for j in range (len(numpdc[i])-1)]
+
+
+
+"""mean slope- long term trend """
+meanslope=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	meanslope[i]=np.mean(slopes[i])
+
+
+"""max and min slopes"""
+maxslope=np.zeros(len(numpdc))
+minslope=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	maxslope[i]=np.percentile(slopes[i],99)
+	minslope[i]=np.percentile(slopes[i],1)
+
+meanpslope, 
+	meanpslope[i]=np.mean(pslope[i])
+
+meannslope, 
+	meannslope[i]=-np.mean(nslope[i])
+
+g_asymm, 
+	g_asymm[i]=meanpslope[i]/meannslope[i]
+
+rough_g_asymm, 
+	rough_g_asymm[i]=len(pslope[i])/len(nslope[i])
+
+
+diff_asymm, 
+	diff_asymm[i]=meanpslope[i]-meannslope[i]
+
+skewslope, 
+"""skew slope- hope of asymmetry"""
+skewslope=np.zeros(len(numpdc))  
+
+for i in range(len(numpdc)):
+	skewslope[i]=scipy.stats.skew(corrslopes[i])
+
+
+varabsslope, 
+varslope, 
+meanabsslope, 
+"""Abs slopes"""
+
+absslopes=[0]*len(numpdc)
+
+for i in range(len(numpdc)):
+	absslopes[i]= [abs(corrslopes[i][j]) for j in range(len(corrslopes[i]))]
+
+"""varabsslope"""
+
+varabsslope=np.zeros(len(numpdc))
+meanabsslope=np.zeros(len(numpdc))
+
+meanabsslope=[np.var(absslopes[i]) for i in range(len(numpdc))]
+varabsslope=[np.mean(absslopes[i]) for i in range(len(numpdc))]
+
+
+absmeansecder, 
+abssecder=[0]*(len(numpdc))
+
+for i in range(len(numpdc)):
+ 	abssecder[i]=[abs((slopes[i][j]-slopes[i][j-1])/((numtime[i][j+1]-numtime[i][j])/2+(numtime[i][j]-numtime[i][j-1])/2)) for j in range (1, len(slopes[i])-1)]
+
+absmeansecder=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	absmeansecder[i]=np.mean(abssecder[i])
+
+"""var slope"""
+
+varslope=np.zeros(len(numpdc))
+
+varslope=[np.var(slopes[i]) for i in range(len(slopes))]
+
+
+num_pspikes, 
+num_nspikes, 
+num_sdspikes, 
+num_sdspikes2,
+stdratio, 
+"""corrsecders"""
+corrsecder=[0]*len(numpdc)
+
+for i in range(len(numpdc)):
+	corrsecder[i]=[(corrslopes[i][j]-corrslopes[i][j-1])/((numtime[i][j+1]-numtime[i][j])/2+(numtime[i][j]-numtime[i][j-1])/2) for j in range (1, len(corrpdc[i])-1)]
+
+"""as regards periodicity in general,there can exist many levels"""
+"""Num_spikes- you casn also isolate transits from cataclysmics using periodicity of spikes
+take ratios of roundnessess or multiply them, """
+
+stdratio=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	pslopestds[i]=np.std(pslope[i])
+	nslopestds[i]=np.std(nslope[i])
+	sdstds[i]=np.std(corrsecder[i])
+	meanstds[i]=np.mean(corrsecder[i])
+	stdratio[i]=pslopestds[i]/nslopestds[i]
+"""
+for i in range(len(numpdc)):
+	pspikes[i]=[corrslopes[i][j] for j in range(len(corrslopes[i])) if corrslopes[i][j]>=3*slopestds[i]] 
+	nspikes[i]=[corrslopes[i][j] for j in range(len(corrslopes[i])) if corrslopes[i][j]<=3*slopestds[i]]
+	sdspikes[i]=[corrsecder[i][j] for j in range(len(corrsecder[i])) if corrsecder[i][j]>=4*sdstds[i]] 
+"""
+for i in range(len(numpdc)):
+	pspikes[i]=[corrslopes[i][j] for j in range(len(corrslopes[i])) if corrslopes[i][j]>=meanpslope[i]+3*pslopestds[i]] 
+	nspikes[i]=[corrslopes[i][j] for j in range(len(corrslopes[i])) if corrslopes[i][j]<=meannslope[i]-3*nslopestds[i]]
+	sdspikes[i]=[corrsecder[i][j] for j in range(len(corrsecder[i])) if corrsecder[i][j]>=4*sdstds[i]] 
+	sdspikes2[i]=[corrsecder[i][j] for j in range(len(corrsecder[i])) if corrsecder[i][j]<=-4*sdstds[i]]
+
+"""change around the 4 and add the min condition along with sdspike
+to look for transits"""
+
+num_pspikes=np.zeros(len(numpdc))
+num_nspikes=np.zeros(len(numpdc))
+num_sdspikes=np.zeros(len(numpdc))
+num_sdspikes2=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	num_pspikes[i]=len(pspikes[i]) 
+	num_nspikes[i]=len(nspikes[i])
+	num_sdspikes[i]=len(sdspikes[i])
+	num_sdspikes2[i]=len(sdspikes2[i])
+
+
+
+
+pstrend, """pair slope trend"""
+pstrend=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	pstrend[i]=len([slopes[i][j] for j in range(len(slopes[i])-1) if (slopes[i][j]>0) & (slopes[i][j+1]>0)])/len(slopes[i])
+
+
+num_zcross,
+"""Zero crossings- accounted for ltt, plot with gasymm"""
+
+zcrossind=[]
+for i in range(len(numpdc)):
+	ltt=longtermtrend[i]
+	yoff=y_offset[i]
+	zcrossind.append([j for j in range(len(numpdc[i])-1) if (ltt*numtime[i][j+1]+ yoff-numpdc[i][j+1])*(ltt*numtime[i][j]+yoff-numpdc[i][j])<0])
+
+
+num_zcross=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	num_zcross[i]=len(zcrossind[i])
+ 
+num_pm, 
+"""pm"""
+plusminus=[0]*len(numpdc)
+
+
+for i in range(len(numpdc)):
+	plusminus[i]=[j for j in range(1,len(slopes[i])) if (slopes[i][j]<0)&(slopes[i][j-1]>0)]
+
+num_pm=np.zeros(len(numpdc))  
+num_pm=[len(plusminus[i]) for i in range(len(numpdc))] 
+
+
+len_nmax
+"""naive maxima and corresponding time values you can do it with 5 or 10 or something else, 1 or two largest"""
+
+naivemaxes=[0]*len(numpdc)
+nmax_times=[0]*len(numpdc)
+maxinds=[0]*len(numpdc)
+maxerr=[0]*len(numpdc)
+for i in range(len(numpdc)):
+	naivemaxes[i]=[corrpdc[i][j] for j in range (len(numpdc[i])) if corrpdc[i][j] in heapq.nlargest(1, corrpdc[i][max(j-10,0):min(j+10, len(numpdc[i])-1): 1])]
+	nmax_times[i]=[numtime[i][j] for j in range (len(numpdc[i])) if corrpdc[i][j] in heapq.nlargest(1, corrpdc[i][max(j-10,0):min(j+10, len(numpdc[i])-1): 1])]
+	maxinds[i]=[j for j in range (len(numpdc[i])) if corrpdc[i][j] in heapq.nlargest(1, corrpdc[i][max(j-10,0):min(j+10, len(numpdc[i])-1): 1])]
+	maxerr[i]=[err[i][j] for j in maxinds[i]]
+
+"""numbers of naive maxima"""
+
+len_nmax=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	len_nmax[i]=len(naivemaxes[i])
+
+len_nmin - """numbers of naive minima"""
+
+len_nmin=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	len_nmin[i]=len(naivemins[i])
+
+mautocorrcoef - """Auto-correlation function of one maximum to next-good clustering"""
+
+autopdcmax=[0]*len(numpdc)
+for i in range(len(numpdc)):
+	autopdcmax[i]=[naivemaxes[i][j+1] for j in range(len(naivemaxes[i])-1)]
+
+mautocovs=np.zeros(len(numpdc))
+mautocorrcoef=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	mautocorrcoef[i]=np.corrcoef(naivemaxes[i][:-1:], autopdcmax[i])[0][1]
+	mautocovs[i]=np.cov(naivemaxes[i][:-1:],autopdcmax[i])[0][1]
+ 
+
+ptpslopes - """peak to peak slopes"""
+ptpslopes=np.zeros(len(numpdc))
+ppslopes=[0]*len(numpdc)
+for i in range(len(numpdc)):
+	ppslopes[i]=[abs((naivemaxes[i][j+1]-naivemaxes[i][j])/(nmax_times[i][j+1]-nmax_times[i][j])) for j in range(len(naivemaxes[i])-1)]
+
+for i in range(len(numpdc)):
+	ptpslopes[i]=np.mean(ppslopes[i])
+
+periodicity, periodicityr, naiveperiod
+"""Variation coefficient of time difference between successive maxima- periodicity?"""
+
+maxdiff=[0]*(len(numpdc))
+for i in range(len(numpdc)):
+	maxdiff[i]=[nmax_times[i][j+1]-nmax_times[i][j] for j in range(len(naivemaxes[i])-1)]
+
+periodicity=np.zeros(len(numpdc))
+periodicityr=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	periodicity[i]=np.std(maxdiff[i])/np.mean(maxdiff[i])
+	periodicityr[i]=np.sum(abs(maxdiff[i]-np.mean(maxdiff[i])))/np.mean(maxdiff[i])
+naiveperiod=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	naiveperiod[i]=np.mean(maxdiff[i])
+
+ 
+maxvars & maxvarsr - """variation coefficient of the maxima"""
+maxvars=np.zeros(len(numpdc))
+maxvarsr=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	maxvars[i]=np.std(naivemaxes[i])/np.mean(naivemaxes[i])
+
+for i in range(len(numpdc)):
+	maxvars[i]=np.std(naivemaxes[i])/np.mean(naivemaxes[i])
+	maxvarsr[i]=np.sum(abs(naivemaxes[i]-np.mean(naivemaxes[i])))/np.mean(naivemaxes[i])
+
+
+oeratio, 
+omin=[0]*len(numpdc)
+emin=[0]*len(numpdc)
+meanomin=np.zeros(len(numpdc))
+meanemin=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	emin[i]=[naivemins[i][j] for j in range(len(naivemins[i])) if j%2==0]
+	omin[i]=[naivemins[i][j] for j in range(len(naivemins[i])) if j%2!=0]
+"""local secder dip"""
+for i in range(len(numpdc)):
+	meanemin[i]=np.mean(emin[i])
+	meanomin[i]=np.mean(omin[i])
+"""plt.scatter(meanomin, meanemin)"""
+oeratio=np.zeros(len(numpdc))
+for i in range(len(numpdc)):
+	oeratio[i]=meanomin[i]/meanemin[i]
+
+
+
+amp_2 & normamp:
+
+amp_2=np.zeros(len(numpdc))
+amp =np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	amp[i]=np.percentile(numpdc[i],99)-np.percentile(numpdc[i],1)
+	amp_2[i]=np.percentile(corrpdc[i],99)-np.percentile(corrpdc[i],1)
+
+normnaiveamp=np.zeros(len(numpdc))
+normamp=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	normnaiveamp[i]=naive_amp_2[i]/np.mean(numpdc[i])
+	normamp[i]=amp_2[i]/np.mean(numpdc[i])
+
+
+
+mbp - Median Buffer Percentile
+
+for i in range(len(numpdc)):
+	mbp[i]=len([numpdc[i][j] for j in range(len(numpdc[i])) if (numpdc[i][j]<(medians[i]+0.1*amp_2[i])) & (numpdc[i][j]>(medians[i]-0.1*amp_2[i]))])/len(numpdc[i])
+
+
+mid20, 
+	f4060[i]=np.percentile(numpdc[i], 60)-np.percentile(numpdc[i], 40)
+	f595[i]=np.percentile(numpdc[i],95)-np.percentile(numpdc[i],5)
+	mid20[i]=f4060[i]/f595[i]
+
+mid35, 
+	f595[i]=np.percentile(numpdc[i],95)-np.percentile(numpdc[i],5)
+	f3267[i]=np.percentile(numpdc[i], 67)-np.percentile(numpdc[i], 32)
+	mid35[i]=f3267[i]/f595[i]
+
+mid50, 
+	f2575[i]=np.percentile(numpdc[i], 75)-np.percentile(numpdc[i], 25)
+	f595[i]=np.percentile(numpdc[i],95)-np.percentile(numpdc[i],5)
+	mid50[i]=f2575[i]/f595[i]
+
+mid65, 
+	f1782[i]=np.percentile(numpdc[i], 82)-np.percentile(numpdc[i], 17)
+	f595[i]=np.percentile(numpdc[i],95)-np.percentile(numpdc[i],5)
+	mid65[i]=f1782[i]/f595[i]
+
+mid80, 
+	f1090[i]=np.percentile(numpdc[i],90)-np.percentile(numpdc[i],10)	
+	f595[i]=np.percentile(numpdc[i],95)-np.percentile(numpdc[i],5)
+	mid80[i]=f1090[i]/f595[i]
+
+
+percentamp, 
+for i in range(len(numpdc)):
+	percentamp[i]=max([(corrpdc[i][j]-medians[i])/medians[i] for j in range(len(corrpdc[i]))])
+
+magratio, 
+magratio=[(max(numpdc[i])-medians[i])/amp[i] for i in range(len(numpdc))]
+
+sautocorrcoef, 
+sautopdc=[0]*len(slopes)
+for i in range(len(slopes)):
+	sautopdc[i]=[slopes[i][j+1] for j in range(len(slopes[i])-1)]
+
+sautocovs=np.zeros(len(slopes))
+for i in range(len(slopes)):
+	sautocorrcoef[i]=np.corrcoef(slopes[i][:-1:], sautopdc[i])[0][1]
+	sautocovs[i]=np.cov(slopes[i][:-1:],sautopdc[i])[0][1]
+
+autocorrcoef, 
+autopdc=[0]*len(numpdc)
+for i in range(len(numpdc)):
+	autopdc[i]=[numpdc[i][j+1] for j in range(len(numpdc[i])-1)]
+
+autocovs=np.zeros(len(numpdc))
+autocorrcoef=np.zeros(len(numpdc))
+
+for i in range(len(numpdc)):
+	autocorrcoef[i]=np.corrcoef(numpdc[i][:-1:], autopdc[i])[0][1]
+	autocovs[i]=np.cov(numpdc[i][:-1:],autopdc[i])[0][1]
+
+flatmean, 
+for i in range(len(numpdc)):
+	flatmean[i]=np.nansum(flatness[i])/len(flatness[i])
+
+tflatmean, 
+for i in range(len(numpdc)):
+	tflatmean[i]=np.nansum(tflatness[i])/len(tflatness[i])
+
+roundmean, 
+for i in range(len(numpdc)):
+	roundmean[i]=np.nansum(roundness[i])/len(roundness[i])
+
+
+troundmean, 
+for i in range(len(numpdc)):
+	troundmean[i]=np.nansum(troundness[i])/len(troundness[i])
+
+roundrat, 
+for i in range(len(numpdc)):
+	roundrat[i]=roundmean[i]/troundmean[i]
+
+flatrat
+for i in range(len(numpdc)):
+	flatrat[i]=flatmean[i]/tflatmean[i]
+
+
