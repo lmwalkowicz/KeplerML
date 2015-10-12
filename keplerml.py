@@ -298,6 +298,9 @@ def feature_calc(filelist):
 
         mad[i] = np.median([abs(nf[j]-np.median(nf)) for j in range(len(nf))])
 
+        len(t)
+        len(nf)
+
         # slopes array is features 13-30
         slopes, corrslopes, secder, slopes_array = calc_slopes(t, nf, corrnf) 
 
@@ -389,5 +392,8 @@ def feature_calc(filelist):
     return final_features
 
 #final list of features - look up vstack and/or append to consolidate these 
+
+#things that are apparently broken:
+#numoutliers
 
 
