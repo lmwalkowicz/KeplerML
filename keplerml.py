@@ -61,13 +61,14 @@ def plot_kepler_curve(t, nf):
     plt.show()
 
 def calc_outliers_pts(t, nf):
+    # Is t really a necessary input?
     posthreshold = np.mean(nf)+4*np.std(nf)
     negthreshold = np.mean(nf)-4*np.std(nf)
 
     outliers = [nf[j] for j in range(len(nf)) if nf[j]>posthreshold or nf[j]<negthreshold]
     posoutliers = [nf[j] for j in range(len(nf)) if nf[j]>posthreshold]
     negoutliers = [nf[j] for j in range(len(nf)) if nf[j]<negthreshold]
-
+    
     numoutliers=len(outliers)
     numposoutliers=len(posoutliers)
     numnegoutliers=len(negoutliers)
@@ -75,6 +76,22 @@ def calc_outliers_pts(t, nf):
     out1std = [nf[j] for j in range(len(nf)) if nf[j]>np.mean(nf)+np.std(nf) or nf[j]<np.mean(nf)-np.std(nf)]
 
     numout1s=len(out1std)
+
+""" 
+The above method runs the same loop four times, I would replace it with the following single loop since we
+really only care about the number of outliers. At some point I should time them both to see if it matters.
+
+    numposoutliers=0
+    numnegoutliers=0
+    for j in range(len(nf)):
+        if abs(np.mean-nf[j])>np.std(nf):
+            numout1s += 1
+        elif nf[j]>posthreshold:
+            numposoutliers += 1
+        elif nf[j]<negthreshold:
+            numnegoutliers += 1
+    numoutliers=numposoutliers+numnegoutliers
+"""
     
     return numoutliers, numposoutliers, numnegoutliers, numout1s
 
@@ -202,6 +219,8 @@ def feature_calc(filelist):
 
     files = [line.strip() for line in open(filelist)]
 
+# Create the appropriate arrays for the features. Length of array determined by number of files.
+
     numlcs = len(files)
     longtermtrend=np.zeros(numlcs)
     meanmedrat=np.zeros(numlcs)
@@ -266,9 +285,12 @@ def feature_calc(filelist):
 
 
     for i in range(len(files)):
-
+        # Keeping track of progress, noting every thousand files completed. Extraneous division? The test is true if and only if 
+        # i % 1000. == 0. Why divide by 1000.?
         if (i % 1000. / 1000. == 0):
             print i
+            # below command prints out a bit more info about the progress, personal preference thing really.
+            # print("%s / %s %s %s complete" % (i,len(files),100*i/len(files)))
 
         lc = pyfits.getdata(files[i])
         t = lc.field('TIME')
