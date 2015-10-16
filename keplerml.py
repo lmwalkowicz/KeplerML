@@ -78,13 +78,16 @@ def calc_outliers_pts(t, nf):
     numout1s=len(out1std)
 
 """ 
-The above method runs the same loop four times, I would replace it with the following single loop since we
-really only care about the number of outliers. At some point I should time them both to see if it matters.
+The above method runs the same loop four times,
+I would replace it with the following single loop since we
+really only care about the number of outliers. 
+At some point I'll time them both to see if it matters.
 
     numposoutliers=0
     numnegoutliers=0
+    numout1s=0
     for j in range(len(nf)):
-        if abs(np.mean-nf[j])>np.std(nf):
+        if abs(np.mean(nf)-nf[j])>np.std(nf):
             numout1s += 1
         elif nf[j]>posthreshold:
             numposoutliers += 1
@@ -99,6 +102,7 @@ def calc_slopes(t, nf, corrnf):
 
     slope_array = np.zeros(20)
 
+    #slopes looks at point j and the next point to find the slope. Delta f/ Delta t
     slopes=[(nf[j+1]-nf[j])/(t[j+1]-t[j]) for j in range (len(nf)-1)]
     corrslopes=[(corrnf[j+1]-corrnf[j])/(t[j+1]-t[j]) for j in range (len(corrnf)-1)]
     meanslope = np.mean(slopes)
@@ -285,12 +289,13 @@ def feature_calc(filelist):
 
 
     for i in range(len(files)):
-        # Keeping track of progress, noting every thousand files completed. Extraneous division? The test is true if and only if 
-        # i % 1000. == 0. Why divide by 1000.?
+        # Keeping track of progress, noting every thousand files completed. Extraneous division?
+        # The test is true if and only if i % 1000. == 0. Why also divide by 1000.?
         if (i % 1000. / 1000. == 0):
             print i
-            # below command prints out a bit more info about the progress, personal preference thing really.
-            # print("%s / %s %s %s complete" % (i,len(files),100*i/len(files)))
+            # below command prints out a bit more info about the progress,
+            # personal preference thing only really.
+            # print("%s/%s %s%s complete" % (i,len(files),100*i/len(files)),"%")
 
         lc = pyfits.getdata(files[i])
         t = lc.field('TIME')
@@ -304,22 +309,35 @@ def feature_calc(filelist):
         t = t[np.isfinite(nf)]
         nf = nf[np.isfinite(nf)]
 
-        longtermtrend[i] = np.polyfit(t, nf, 1)[0]
-        yoff = np.polyfit(t, nf, 1)[1]
-        meanmedrat[i] = np.mean(nf) / np.median(nf)
-        skews[i] = scipy.stats.skew(nf)
-        varss[i] = np.var(nf)
-        coeffvar[i] = np.std(nf)/np.mean(nf)
-        stds[i] = np.std(nf)
+        # replace above 12 lines with:
+        # t,nf,err = read_kepler_curve(files[i])
+
+        # lc = lightcurve
+        # t = time
+        # f = flux
+        # err = error
+        # mf = flux over median value, normalized flux (almost)
+        # nf = normalized flux. Same as mf but offset by 1 to center at 0?
+
+        longtermtrend[i] = np.polyfit(t, nf, 1)[0] # Feature 1 (Abbr. F1) overall slope
+        yoff = np.polyfit(t, nf, 1)[1] # Not a feature? y-intercept of linear fit
+        meanmedrat[i] = np.mean(nf) / np.median(nf) # F2
+        skews[i] = scipy.stats.skew(nf) # F3
+        varss[i] = np.var(nf) # F4
+        coeffvar[i] = np.std(nf)/np.mean(nf) #F5
+        stds[i] = np.std(nf) #F6
 
         corrnf = nf - longtermtrend[i]*t - yoff #this removes any linear slope to lc so you can look at just troughs - is this a sign err tho?
-
+        # D: I don't think there's a sign error
+        
+        # Features 7 to 10
         numoutliers[i], numposoutliers[i], numnegoutliers[i], numout1s[i] = calc_outliers_pts(t, nf)
 
         kurt[i] = scipy.stats.kurtosis(nf)
 
         mad[i] = np.median([abs(nf[j]-np.median(nf)) for j in range(len(nf))])
 
+        # D:  What are these here for?
         len(t)
         len(nf)
 
@@ -416,6 +434,5 @@ def feature_calc(filelist):
 #final list of features - look up vstack and/or append to consolidate these 
 
 #things that are apparently broken:
-#numoutliers
-
+#numoutliers   Dan: Seems like an easy fix, see comments above
 
