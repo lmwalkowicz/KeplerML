@@ -81,7 +81,9 @@ def calc_outliers_pts(t, nf):
 The above method runs the same loop four times,
 I would replace it with the following single loop since we
 really only care about the number of outliers. 
-At some point I'll time them both to see if it matters.
+At some point I'll time them both to see if it matters. 
+Followup: Timed and found this to be 46% faster 
+where nf had a normal distribution of 10,000 random numbers.
 
     numposoutliers=0
     numnegoutliers=0
@@ -89,10 +91,10 @@ At some point I'll time them both to see if it matters.
     for j in range(len(nf)):
         if abs(np.mean(nf)-nf[j])>np.std(nf):
             numout1s += 1
-        elif nf[j]>posthreshold:
-            numposoutliers += 1
-        elif nf[j]<negthreshold:
-            numnegoutliers += 1
+            if nf[j]>posthreshold:
+                numposoutliers += 1
+            elif nf[j]<negthreshold:
+                numnegoutliers += 1
     numoutliers=numposoutliers+numnegoutliers
 """
     
@@ -104,22 +106,39 @@ def calc_slopes(t, nf, corrnf):
 
     #slopes looks at point j and the next point to find the slope. Delta f/ Delta t
     slopes=[(nf[j+1]-nf[j])/(t[j+1]-t[j]) for j in range (len(nf)-1)]
+    #corrslopes removes the longterm linear trend (if any) and then looks at the slope
     corrslopes=[(corrnf[j+1]-corrnf[j])/(t[j+1]-t[j]) for j in range (len(corrnf)-1)]
     meanslope = np.mean(slopes)
+    # by looking at where the 99th percentile is instead of just the largest number,
+    # I think it avoids the extremes which might not be relevant (might be unreliable data)
+    # Is the miniumum slope the most negative one, or the flattest one?
     maxslope=np.percentile(slopes,99)
     minslope=np.percentile(slopes,1)
+    # Separating positive slopes and negative slopes
+    # Should both include the 0 slope? I'd guess there wouldn't be a ton, but still...
     pslope=[slopes[j] for j in range(len(slopes)) if slopes[j]>=0]
     nslope=[slopes[j] for j in range(len(slopes)) if slopes[j]<=0]
+    # Looking at the average (mean) positive and negative slopes
     meanpslope=np.mean(pslope)
     meannslope=np.mean(nslope)
+    # Quantifying the difference in shape. This will return a negative number since meannslope
+    # should be negative, I'm guessing that doesn't matter, but should we make it positive?
     g_asymm=meanpslope / meannslope
+    # Won't this be skewed by the fact that both pslope and nslope have all the 0's?
     rough_g_asymm=len(pslope) / len(nslope)
+    # I feel like diff_asymm should be meanpslope + meannslope since meannslope should be negative
     diff_asymm=meanpslope - meannslope
     skewslope = scipy.stats.skew(slopes)
     absslopes=[abs(slopes[j]) for j in range(len(slopes))]
-    meanabsslope=np.var(absslopes)
-    varabsslope=np.mean(absslopes)
+    # D: fixed the following 2 lines, it used to be meanabsslope=np.var(absslopes) and vice versa
+    meanabsslope=np.mean(absslopes)
+    varabsslope=np.var(absslopes)
     varslope=np.var(slopes)
+    #secder = Second Derivative
+    # Reminder for self: the slope is "located" halfway between the flux and time points, 
+    # so the delta t in the denominator is accounting for that.
+    #algebraic simplification:
+    #secder=[2*(slopes[j]-slopes[j-1])/(t[j+1]-t[j-1]) for j in range(1, len(nf)-1)]
     secder=[(slopes[j]-slopes[j-1])/((t[j+1]-t[j])/2+(t[j]-t[j-1])/2) for j in range(1, len(nf)-1)]
     meansecder=np.mean(secder)
     abssecder=[abs((slopes[j]-slopes[j-1])/((t[j+1]-t[j])/2+(t[j]-t[j-1])/2)) for j in range (1, len(slopes)-1)]
@@ -140,8 +159,24 @@ def calc_slopes(t, nf, corrnf):
     num_nspikes = len(nspikes)
     num_psdspikes = len(psdspikes)
     num_nsdspikes = len(nsdspikes)
-
+    
+    """
+    Again, replace 4 loops with 1
+    for j in range(len(slopes)):
+        if slopes[j]>=meanpslope+3*np.std(pslope):
+            num_pspikes += 1
+        elif slopes[j]<=meannslope-3*np.std(nslope):
+            num_nspikes += 1
+        
+        if secder[j]>=4*sdsstds:
+            psdspikes += 1
+        elif ssecder[j]<=-4*sdsstds:
+            nsdspikes += 1
+    """
+    
     stdratio = pslopestds / nslopestds
+    # The ratio of postive slopes with a following postive slope to the total number of points.
+
     pstrend=len([slopes[j] for j in range(len(slopes)-1) if (slopes[j]>0) & (slopes[j+1]>0)])/len(slopes)
 
     slope_array = [meanslope, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes, stdratio, pstrend]
@@ -341,7 +376,7 @@ def feature_calc(filelist):
         len(t)
         len(nf)
 
-        # slopes array is features 13-30
+        # slopes array contains features 13-30
         slopes, corrslopes, secder, slopes_array = calc_slopes(t, nf, corrnf) 
 
         maxslope[i] = slopes_array[0]
@@ -364,16 +399,26 @@ def feature_calc(filelist):
         pstrend[i]  = slopes_array[17]
         
         # zerocross def different here than Revant's version 
+        # D: I'm not sure what this is about. Why does it repeat the same thing for every value of nf?
+        # Seems like this has been adapted but it looks a bit nonsensical to me.
+        # Why isn't there the yoff in the second part?
         zcrossind = []
         for k in range(len(nf)):
                 zcrossind.append([j for j in range(len(nf)-1) if (longtermtrend[i]*t[j+1]+ yoff-nf[j+1])*(longtermtrend[i]*t[j]-nf[j])<0])
-
-        num_zcross[i] = len(zcrossind)
+        
+        # Below is what I'm guessing this should look like. Checks if the normalized flux crosses the
+        # linear prediction line (presumably what we're calling z).
+        #zcrossind = [j for j in range(len(nf)-1) if (longtermtrend[i]*t[j+1]+ yoff-nf[j+1])*(longtermtrend[i]*t[j]+yoff-nf[j])<0]
+        
+        # Based on the above, the length of zcrossind will always be the length of nf.
+        # It's meaningless as it currently is.
+        
+        num_zcross[i] = len(zcrossind) #F31
 
         plusminus=[j for j in range(1,len(slopes)) if (slopes[j]<0)&(slopes[j-1]>0)]
         num_pm[i] = len(plusminus)
-
-        # peak to peak array is features 33 - 42
+        """D: Bookmark"""
+        # peak to peak array contains features 33 - 42
         peaktopeak_array, naivemax, naivemins = calc_maxmin_periodics(t, nf, err)
 
         # amp here is actually amp_2 in revantese
