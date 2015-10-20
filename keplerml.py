@@ -77,18 +77,17 @@ def calc_outliers_pts(t, nf):
 
     numout1s=len(out1std)
 
-""" 
-The above method runs the same loop four times,
-I would replace it with the following single loop since we
-really only care about the number of outliers. 
-At some point I'll time them both to see if it matters. 
-Followup: Timed and found this to be 46% faster 
-where nf had a normal distribution of 10,000 random numbers.
+    """ 
+    The above method runs the same loop four times,
+    I would replace it with the following single loop since we
+    really only care about the number of outliers. 
+    At some point I'll time them both to see if it matters. 
+    Followup: Timed and found this to be 46% faster 
+    where nf had a normal distribution of 10,000 random numbers.
 
-    numposoutliers=0
-    numnegoutliers=0
-    numout1s=0
+    numposoutliers,numnegoutliers,numout1s=0
     for j in range(len(nf)):
+        # First checks if nf[j] is outside of 1 sigma
         if abs(np.mean(nf)-nf[j])>np.std(nf):
             numout1s += 1
             if nf[j]>posthreshold:
@@ -96,7 +95,7 @@ where nf had a normal distribution of 10,000 random numbers.
             elif nf[j]<negthreshold:
                 numnegoutliers += 1
     numoutliers=numposoutliers+numnegoutliers
-"""
+    """
     
     return numoutliers, numposoutliers, numnegoutliers, numout1s
 
@@ -121,27 +120,27 @@ def calc_slopes(t, nf, corrnf):
     # Looking at the average (mean) positive and negative slopes
     meanpslope=np.mean(pslope)
     meannslope=np.mean(nslope)
-    # Quantifying the difference in shape. This will return a negative number since meannslope
-    # should be negative, I'm guessing that doesn't matter, but should we make it positive?
+    # Quantifying the difference in shape.
     g_asymm=meanpslope / meannslope
-    # Won't this be skewed by the fact that both pslope and nslope have all the 0's?
+    # Won't this be skewed by the fact that both pslope and nslope have all the 0's? Eh
     rough_g_asymm=len(pslope) / len(nslope)
-    # I feel like diff_asymm should be meanpslope + meannslope since meannslope should be negative
-    diff_asymm=meanpslope - meannslope
+    # meannslope is inherently negative, so this is the difference btw the 2
+    diff_asymm=meanpslope + meannslope
     skewslope = scipy.stats.skew(slopes)
     absslopes=[abs(slopes[j]) for j in range(len(slopes))]
-    # D: fixed the following 2 lines, it used to be meanabsslope=np.var(absslopes) and vice versa
     meanabsslope=np.mean(absslopes)
     varabsslope=np.var(absslopes)
     varslope=np.var(slopes)
     #secder = Second Derivative
     # Reminder for self: the slope is "located" halfway between the flux and time points, 
     # so the delta t in the denominator is accounting for that.
+    #secder=[(slopes[j]-slopes[j-1])/((t[j+1]-t[j])/2+(t[j]-t[j-1])/2) for j in range(1, len(nf)-1)]
     #algebraic simplification:
-    #secder=[2*(slopes[j]-slopes[j-1])/(t[j+1]-t[j-1]) for j in range(1, len(nf)-1)]
-    secder=[(slopes[j]-slopes[j-1])/((t[j+1]-t[j])/2+(t[j]-t[j-1])/2) for j in range(1, len(nf)-1)]
+    secder=[2*(slopes[j]-slopes[j-1])/(t[j+1]-t[j-1]) for j in range(1, len(nf)-1)]
     meansecder=np.mean(secder)
-    abssecder=[abs((slopes[j]-slopes[j-1])/((t[j+1]-t[j])/2+(t[j]-t[j-1])/2)) for j in range (1, len(slopes)-1)]
+    #abssecder=[abs((slopes[j]-slopes[j-1])/((t[j+1]-t[j])/2+(t[j]-t[j-1])/2)) for j in range (1, len(slopes)-1)]
+    # simplification:
+    abssecder=[abs(secder[j]) for j in range(1, len(secder))]
     absmeansecder=np.mean(abssecder)
 
     pslopestds=np.std(pslope)
@@ -161,6 +160,7 @@ def calc_slopes(t, nf, corrnf):
     num_nsdspikes = len(nsdspikes)
     
     """
+    num_pspikes,num_nspikes,psdspikes,nsdspikes=0
     Again, replace 4 loops with 1
     for j in range(len(slopes)):
         if slopes[j]>=meanpslope+3*np.std(pslope):
@@ -184,51 +184,79 @@ def calc_slopes(t, nf, corrnf):
     return slopes, corrslopes, secder, slope_array
 
 def calc_maxmin_periodics(t, nf, err):
-#look up this heapq.largest crap
-
+#look up this heapq.nlargest crap
+    #This looks up the local maximums. Adds a peak if it's the largest within 10 points on either side.
     naivemax=[nf[j] for j in range(len(nf)) if nf[j] in heapq.nlargest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
-
+    
+    # The following is the same as above, but it takes about half as long
+    #naivemax=[nf[j] for j in range(len(nf)) if nf[j] == max(nf[max(j-10,0):min(j+10,len(nf)-1)])]
     nmax_times=[t[j] for j in range(len(nf)) if nf[j] in heapq.nlargest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
 
     maxinds=[j for j in range(len(nf)) if nf[j] in heapq.nlargest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
 
     maxerr=[err[j] for j in maxinds]
-    len_nmax=len(naivemax)
+    len_nmax=len(naivemax) #F33
+    """
+    Again, 1 loop to replace 7. Also replaces the unnecessary and time consuming heaping of these things.
+    Removed nmin_times, maxinds, mininds, and maxerr because they don't seem to be necessary for anything.
+    naivemax,nmax_times = [],[]
+    naivemins = []
+    for j in range(len(nf)):
+        if nf[j] == max(nf[max(j-10,0):min(j+10,len(nf-1))]):
+            naivemax.append(nf[j])
+            nmax_times.append(t[j])
+        elif nf[j] == min(nf[max(j-10,0):min(j+10),len(nf-1))]):
+            naivemins.append(nf[j])
+    len_nmax=len(naivemax) #F33
+    len_nmin=len(naivemins) #F34
+    """
 
     #wtf is this?
-    autopdcmax = [naivemax[j+1] for j in range(len(naivemax)-1)]
-
-    mautocorrcoef = np.corrcoef(naivemax[:-1:], autopdcmax)[0][1]
-    mautocovs = np.cov(naivemax[:-1:],autopdcmax)[0][1]
+    #D: shifts everything to the left for some reason.
+    #autopdcmax = [naivemax[j+1] for j in range(len(naivemax)-1)] = naivemax[1:]
+    
+    #naivemax[:-1:] is naivemax without the last value and autopdcmax is naivemax without the first value. why do this?
+    #np.corrcoef(array) returns a correlation coefficient matrix. I.e. a normalized covariance matrix
+    """
+    It looks like it compares each point to it's next neighbor, hence why they're offset, 
+    then determines if there's a correlation between the two. If the coefficient is closer
+    to 1, then there's a strong correlation, if 0 then no correlation, if -1 (possible?) then anti-correlated.
+    """
+    mautocorrcoef = np.corrcoef(naivemax[:-1], naivemax[1:])[0][1] #F35
+    mautocovs = np.cov(naivemax[:-1],naivemax[1:])[0][1] # Not a feature, not used elsewhere
 
     """peak to peak slopes"""
     ppslopes = [abs((naivemax[j+1]-naivemax[j])/(nmax_times[j+1]-nmax_times[j])) for j in range(len(naivemax)-1)]
 
-    ptpslopes=np.mean(ppslopes)
+    ptpslopes=np.mean(ppslopes) #F36
 
     maxdiff=[nmax_times[j+1]-nmax_times[j] for j in range(len(naivemax)-1)]
 
-    periodicity=np.std(maxdiff)/np.mean(maxdiff)
-    periodicityr=np.sum(abs(maxdiff-np.mean(maxdiff)))/np.mean(maxdiff)
+    periodicity=np.std(maxdiff)/np.mean(maxdiff) #F37
+    periodicityr=np.sum(abs(maxdiff-np.mean(maxdiff)))/np.mean(maxdiff) #F38
 
-    naiveperiod=np.mean(maxdiff)
-
-    maxvars = np.std(naivemax)/np.mean(naivemax)
-    maxvarsr = np.sum(abs(naivemax-np.mean(naivemax)))/np.mean(naivemax)
-
+    naiveperiod=np.mean(maxdiff) #F39
+    # why not maxvars = np.var(naivemax)? Is this not the variance? Seems like it should be...
+    #maxvars = np.var(naivemax) #F40
+    maxvars = np.std(naivemax)/np.mean(naivemax) #F40
+    # I don't understand what this is.
+    maxvarsr = np.sum(abs(naivemax-np.mean(naivemax)))/np.mean(naivemax) #F41
+    
+    """replace below with loop by naivemax"""
     naivemins=[nf[j] for j in range (len(nf)) if nf[j] in heapq.nsmallest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
     
-    nmin_times=[t[j] for j in range (len(nf)) if nf[j] in heapq.nsmallest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
+    nmin_times=[t[j] for j in range (len(nf)) if nf[j] in heapq.nsmallest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])] # not used elsewhere
 
-    mininds=[j for j in range (len(nf)) if nf[j] in heapq.nsmallest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
+    mininds=[j for j in range (len(nf)) if nf[j] in heapq.nsmallest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])] # not used elsewhered
 
-    len_nmin=len(naivemins)
+    len_nmin=len(naivemins) #F34
+    """ --------------------------------- """
 
-    emin = [naivemins[j] for j in range(len(naivemins)) if j%2==0]
-    omin = [naivemins[j] for j in range(len(naivemins)) if j%2!=0]
+    emin = naivemins[::2] # even indice minimums
+    omin = naivemins[1::2] # odd indice minimums
     meanemin = np.mean(emin)
     meanomin = np.mean(omin)
-    oeratio = meanomin/meanemin
+    oeratio = meanomin/meanemin #F42
 
     peaktopeak_array = [len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio]
 
@@ -258,7 +286,7 @@ def feature_calc(filelist):
 
     files = [line.strip() for line in open(filelist)]
 
-# Create the appropriate arrays for the features. Length of array determined by number of files.
+    # Create the appropriate arrays for the features. Length of array determined by number of files.
 
     numlcs = len(files)
     longtermtrend=np.zeros(numlcs)
@@ -324,34 +352,17 @@ def feature_calc(filelist):
 
 
     for i in range(len(files)):
-        # Keeping track of progress, noting every thousand files completed. Extraneous division?
-        # The test is true if and only if i % 1000. == 0. Why also divide by 1000.?
-        if (i % 1000. / 1000. == 0):
+        # Keeping track of progress, noting every thousand files completed.
+        if (i % 1000. == 0):
             print i
             # below command prints out a bit more info about the progress,
             # personal preference thing only really.
-            # print("%s/%s %s%s complete" % (i,len(files),100*i/len(files)),"%")
+            print("%s/%s %s percent complete" % (i,len(files),100*i/len(files)))
 
-        lc = pyfits.getdata(files[i])
-        t = lc.field('TIME')
-        f = lc.field('PDCSAP_FLUX')
-        err = lc.field('PDCSAP_FLUX_ERR')
-        mf = f / np.median(f)
-        nf = mf - 1.
- 
-        nf = nf[np.isfinite(t)]
-        t = t[np.isfinite(t)]
-        t = t[np.isfinite(nf)]
-        nf = nf[np.isfinite(nf)]
+        t,nf,err = read_kepler_curve(files[i])
 
-        # replace above 12 lines with:
-        # t,nf,err = read_kepler_curve(files[i])
-
-        # lc = lightcurve
         # t = time
-        # f = flux
         # err = error
-        # mf = flux over median value, normalized flux (almost)
         # nf = normalized flux. Same as mf but offset by 1 to center at 0?
 
         longtermtrend[i] = np.polyfit(t, nf, 1)[0] # Feature 1 (Abbr. F1) overall slope
@@ -371,10 +382,6 @@ def feature_calc(filelist):
         kurt[i] = scipy.stats.kurtosis(nf)
 
         mad[i] = np.median([abs(nf[j]-np.median(nf)) for j in range(len(nf))])
-
-        # D:  What are these here for?
-        len(t)
-        len(nf)
 
         # slopes array contains features 13-30
         slopes, corrslopes, secder, slopes_array = calc_slopes(t, nf, corrnf) 
@@ -398,29 +405,16 @@ def feature_calc(filelist):
         stdratio[i]  = slopes_array[16]
         pstrend[i]  = slopes_array[17]
         
-        # zerocross def different here than Revant's version 
-        # D: I'm not sure what this is about. Why does it repeat the same thing for every value of nf?
-        # Seems like this has been adapted but it looks a bit nonsensical to me.
-        # Why isn't there the yoff in the second part?
-        zcrossind = []
-        for k in range(len(nf)):
-                zcrossind.append([j for j in range(len(nf)-1) if (longtermtrend[i]*t[j+1]+ yoff-nf[j+1])*(longtermtrend[i]*t[j]-nf[j])<0])
-        
-        # Below is what I'm guessing this should look like. Checks if the normalized flux crosses the
-        # linear prediction line (presumably what we're calling z).
-        #zcrossind = [j for j in range(len(nf)-1) if (longtermtrend[i]*t[j+1]+ yoff-nf[j+1])*(longtermtrend[i]*t[j]+yoff-nf[j])<0]
-        
-        # Based on the above, the length of zcrossind will always be the length of nf.
-        # It's meaningless as it currently is.
-        
+        # Checks if the flux crosses the zero line.
+        zcrossind= [j for j in range(len(nf)-1) if corrnf[j]*corrnf[j+1]<0]
         num_zcross[i] = len(zcrossind) #F31
 
         plusminus=[j for j in range(1,len(slopes)) if (slopes[j]<0)&(slopes[j-1]>0)]
         num_pm[i] = len(plusminus)
-        """D: Bookmark"""
+
         # peak to peak array contains features 33 - 42
         peaktopeak_array, naivemax, naivemins = calc_maxmin_periodics(t, nf, err)
-
+        """D: Bookmark"""
         # amp here is actually amp_2 in revantese
         amp[i] = np.percentile(nf,99)-np.percentile(nf,1)
         normamp[i] = amp[i] / np.mean(nf) #this should prob go, since flux is norm'd
@@ -428,28 +422,28 @@ def feature_calc(filelist):
         mbp[i] = len([nf[j] for j in range(len(nf)) if (nf[j] < (np.median(nf) + 0.1*amp[i])) & (nf[j] > (np.median(nf)-0.1*amp[i]))]) / len(nf)
 
         f595 = np.percentile(nf,95)-np.percentile(nf,5)
-	f1090 =np.percentile(nf,90)-np.percentile(nf,10)	
-	f1782 =np.percentile(nf, 82)-np.percentile(nf, 17)
-	f2575 =np.percentile(nf, 75)-np.percentile(nf, 25)
-	f3267 =np.percentile(nf, 67)-np.percentile(nf, 32)
-	f4060 =np.percentile(nf, 60)-np.percentile(nf, 40)
-	mid20[i] =f4060/f595
-	mid35[i] =f3267/f595
-	mid50[i] =f2575/f595
-	mid65[i] =f1782/f595
-	mid80[i] =f1090/f595
+        f1090 =np.percentile(nf,90)-np.percentile(nf,10)
+        f1782 =np.percentile(nf, 82)-np.percentile(nf, 17)
+        f2575 =np.percentile(nf, 75)-np.percentile(nf, 25)
+        f3267 =np.percentile(nf, 67)-np.percentile(nf, 32)
+        f4060 =np.percentile(nf, 60)-np.percentile(nf, 40)
+        mid20[i] =f4060/f595
+        mid35[i] =f3267/f595
+        mid50[i] =f2575/f595
+        mid65[i] =f1782/f595
+        mid80[i] =f1090/f595
 
         percentamp[i] = max([(nf[j]-np.median(nf)) / np.median(nf) for j in range(len(nf))])
         magratio[i] = (max(nf)-np.median(nf)) / amp[i]
 
         autopdc=[nf[j+1] for j in range(len(nf)-1)]
         autocorrcoef[i] = np.corrcoef(nf[:-1:], autopdc)[0][1]
-	autocovs = np.cov(nf[:-1:], autopdc)[0][1]
+        autocovs = np.cov(nf[:-1:], autopdc)[0][1]
  
         sautopdc=[slopes[j+1] for j in range(len(slopes)-1)]
 
-	sautocorrcoef[i] = np.corrcoef(slopes[:-1:], sautopdc)[0][1]
-	sautocovs = np.cov(slopes[:-1:],sautopdc)[0][1]
+        sautocorrcoef[i] = np.corrcoef(slopes[:-1:], sautopdc)[0][1]
+        sautocovs = np.cov(slopes[:-1:],sautopdc)[0][1]
         
         flatness = [np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])- np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemax]
 
@@ -467,9 +461,9 @@ def feature_calc(filelist):
         troundness = [np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemins]
 	
         troundmean[i] = np.nansum(troundness)/len(troundness)
-        roundrat[i] = roundmean / troundmean
+        roundrat[i] = roundmean[i] / troundmean[i]
 
-        flatrat[i] = flatmean / tflatmean
+        flatrat[i] = flatmean[i] / tflatmean[i]
 
     final_features = np.vstack((longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat))
     
@@ -481,3 +475,5 @@ def feature_calc(filelist):
 #things that are apparently broken:
 #numoutliers   Dan: Seems like an easy fix, see comments above
 
+f = 'speedtest'
+print feature_calc(f)
