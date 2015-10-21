@@ -1,8 +1,8 @@
+%%timeit
 # L.M. Walkowicz
 # Rewrite of Revant's feature calculations, plus additional functions for vetting outliers
 
 
-from __future__ import division
 import random
 import numpy as np
 import scipy as sp
@@ -64,26 +64,6 @@ def calc_outliers_pts(t, nf):
     # Is t really a necessary input?
     posthreshold = np.mean(nf)+4*np.std(nf)
     negthreshold = np.mean(nf)-4*np.std(nf)
-    """
-    outliers = [nf[j] for j in range(len(nf)) if nf[j]>posthreshold or nf[j]<negthreshold]
-    posoutliers = [nf[j] for j in range(len(nf)) if nf[j]>posthreshold]
-    negoutliers = [nf[j] for j in range(len(nf)) if nf[j]<negthreshold]
-    
-    numoutliers=len(outliers)
-    numposoutliers=len(posoutliers)
-    numnegoutliers=len(negoutliers)
-
-    out1std = [nf[j] for j in range(len(nf)) if nf[j]>np.mean(nf)+np.std(nf) or nf[j]<np.mean(nf)-np.std(nf)]
-
-    numout1s=len(out1std)
-
-    The above method runs the same loop four times,
-    I would replace it with the following single loop since we
-    really only care about the number of outliers. 
-    At some point I'll time them both to see if it matters. 
-    Followup: Timed and found this to be 46% faster 
-    where nf had a normal distribution of 10,000 random numbers.
-    """
     
     numposoutliers,numnegoutliers,numout1s=0,0,0
     for j in range(len(nf)):
@@ -97,6 +77,7 @@ def calc_outliers_pts(t, nf):
     numoutliers=numposoutliers+numnegoutliers
     
     return numoutliers, numposoutliers, numnegoutliers, numout1s
+
 
 def calc_slopes(t, nf, corrnf):
 
@@ -147,7 +128,7 @@ def calc_slopes(t, nf, corrnf):
     sdstds=np.std(secder)
     meanstds=np.mean(secder)
     stdratio=pslopestds/nslopestds
-    """
+
     pspikes =[slopes[j] for j in range(len(slopes)) if slopes[j]>=meanpslope+3*pslopestds] 
     nspikes=[slopes[j] for j in range(len(slopes)) if slopes[j]<=meannslope-3*nslopestds]
     psdspikes=[secder[j] for j in range(len(secder)) if secder[j]>=4*sdstds] 
@@ -157,21 +138,6 @@ def calc_slopes(t, nf, corrnf):
     num_nspikes = len(nspikes)
     num_psdspikes = len(psdspikes)
     num_nsdspikes = len(nsdspikes)
-    """
-    
-    num_pspikes,num_nspikes,num_psdspikes,num_nsdspikes=0,0,0,0
-    #Again, replace 4 loops with 1
-    for j in range(len(slopes)):
-        if slopes[j]>=meanpslope+3*np.std(pslope):
-            num_pspikes += 1
-        elif slopes[j]<=meannslope-3*np.std(nslope):
-            num_nspikes += 1
-    for j in range(len(slopes)-1):    
-        if secder[j]>=4*sdstds:
-            num_psdspikes += 1
-        elif secder[j]<=-4*sdstds:
-            num_nsdspikes += 1
-    
     
     stdratio = pslopestds / nslopestds
     # The ratio of postive slopes with a following postive slope to the total number of points.
@@ -185,23 +151,7 @@ def calc_slopes(t, nf, corrnf):
 def calc_maxmin_periodics(t, nf, err):
 #look up this heapq.nlargest crap
     #This looks up the local maximums. Adds a peak if it's the largest within 10 points on either side.
-    """
-    naivemax=[nf[j] for j in range(len(nf)) if nf[j] in heapq.nlargest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
-    
-    # The following is the same as above, but it takes about half as long
-    #naivemax=[nf[j] for j in range(len(nf)) if nf[j] == max(nf[max(j-10,0):min(j+10,len(nf)-1)])]
-    
-    nmax_times=[t[j] for j in range(len(nf)) if nf[j] in heapq.nlargest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
 
-    maxinds=[j for j in range(len(nf)) if nf[j] in heapq.nlargest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
-
-    maxerr=[err[j] for j in maxinds]
-    len_nmax=len(naivemax) #F33
-    
-    
-    Again, 1 loop to replace 7. Also replaces the unnecessary and time consuming heaping of these things.
-    Removed nmin_times, maxinds, mininds, and maxerr because they don't seem to be necessary for anything.
-    """
     naivemax,nmax_times = [],[]
     naivemins = []
     for j in range(len(nf)):
@@ -244,16 +194,6 @@ def calc_maxmin_periodics(t, nf, err):
     maxvars = np.std(naivemax)/np.mean(naivemax) #F40
     # I don't understand what this is.
     maxvarsr = np.sum(abs(naivemax-np.mean(naivemax)))/np.mean(naivemax) #F41
-    
-    """replace below with loop by naivemax
-    naivemins=[nf[j] for j in range (len(nf)) if nf[j] in heapq.nsmallest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])]
-    
-    nmin_times=[t[j] for j in range (len(nf)) if nf[j] in heapq.nsmallest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])] # not used elsewhere
-
-    mininds=[j for j in range (len(nf)) if nf[j] in heapq.nsmallest(1, nf[max(j-10,0):min(j+10, len(nf)-1): 1])] # not used elsewhered
-
-    len_nmin=len(naivemins) #F34
-     --------------------------------- """
 
     emin = naivemins[::2] # even indice minimums
     omin = naivemins[1::2] # odd indice minimums
@@ -264,6 +204,7 @@ def calc_maxmin_periodics(t, nf, err):
     peaktopeak_array = [len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio]
 
     return peaktopeak_array, naivemax, naivemins
+
 
 
 def lc_examine(filelist, style='-'):
@@ -419,6 +360,7 @@ def feature_calc(filelist):
         peaktopeak_array, naivemax, naivemins = calc_maxmin_periodics(t, nf, err)
         """D: Bookmark"""
         # amp here is actually amp_2 in revantese
+        # 2x the amplitude (peak-to-peak really)
         amp[i] = np.percentile(nf,99)-np.percentile(nf,1)
         normamp[i] = amp[i] / np.mean(nf) #this should prob go, since flux is norm'd
 
@@ -479,4 +421,4 @@ def feature_calc(filelist):
 #numoutliers   Dan: Seems like an easy fix, see comments above
 
 f = 'speedtest'
-print feature_calc(f)
+print(feature_calc(f))
