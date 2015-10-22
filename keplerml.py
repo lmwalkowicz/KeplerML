@@ -358,13 +358,26 @@ def feature_calc(filelist):
 
         # peak to peak array contains features 33 - 42
         peaktopeak_array, naivemax, naivemins = calc_maxmin_periodics(t, nf, err)
+        
+        len_nmax[i]=peaktopeak_array[0]
+        len_nmin[i]=peaktopeak_array[1]
+        mautocorrcoef[i]=peaktopeak_array[2]
+        ptpslopes[i]=peaktopeak_array[3]
+        periodicity[i]=peaktopeak_array[4]
+        periodicityr[i]=peaktopeak_array[5]
+        naiveperiod[i]=peaktopeak_array[6]
+        maxvars[i]=peaktopeak_array[7]
+        maxvarsr[i]=peaktopeak_array[8]
+        oeratio[i]=peaktopeak_array[9]
+        
         """D: Bookmark"""
         # amp here is actually amp_2 in revantese
         # 2x the amplitude (peak-to-peak really)
-        amp[i] = np.percentile(nf,99)-np.percentile(nf,1)
-        normamp[i] = amp[i] / np.mean(nf) #this should prob go, since flux is norm'd
-
-        mbp[i] = len([nf[j] for j in range(len(nf)) if (nf[j] < (np.median(nf) + 0.1*amp[i])) & (nf[j] > (np.median(nf)-0.1*amp[i]))]) / len(nf)
+        amp[i] = np.percentile(nf,99)-np.percentile(nf,1) #F43
+        normamp[i] = amp[i] / np.mean(nf) #this should prob go, since flux is norm'd #F44
+        
+        # ratio of points within 10% of middle to total number of points 
+        mbp[i] = len([nf[j] for j in range(len(nf)) if (nf[j] < (np.median(nf) + 0.1*amp[i])) & (nf[j] > (np.median(nf)-0.1*amp[i]))]) / len(nf) #F45
 
         f595 = np.percentile(nf,95)-np.percentile(nf,5)
         f1090 =np.percentile(nf,90)-np.percentile(nf,10)
@@ -372,43 +385,43 @@ def feature_calc(filelist):
         f2575 =np.percentile(nf, 75)-np.percentile(nf, 25)
         f3267 =np.percentile(nf, 67)-np.percentile(nf, 32)
         f4060 =np.percentile(nf, 60)-np.percentile(nf, 40)
-        mid20[i] =f4060/f595
-        mid35[i] =f3267/f595
-        mid50[i] =f2575/f595
-        mid65[i] =f1782/f595
-        mid80[i] =f1090/f595
+        mid20[i] =f4060/f595 #F46
+        mid35[i] =f3267/f595 #F47
+        mid50[i] =f2575/f595 #F48
+        mid65[i] =f1782/f595 #F49
+        mid80[i] =f1090/f595 #F50 
 
-        percentamp[i] = max([(nf[j]-np.median(nf)) / np.median(nf) for j in range(len(nf))])
-        magratio[i] = (max(nf)-np.median(nf)) / amp[i]
+        percentamp[i] = max([(nf[j]-np.median(nf)) / np.median(nf) for j in range(len(nf))]) #F51
+        magratio[i] = (max(nf)-np.median(nf)) / amp[i] #F52
 
-        autopdc=[nf[j+1] for j in range(len(nf)-1)]
-        autocorrcoef[i] = np.corrcoef(nf[:-1:], autopdc)[0][1]
-        autocovs = np.cov(nf[:-1:], autopdc)[0][1]
+        #autopdc=[nf[j+1] for j in range(len(nf)-1)] = nf[1:]
+        autocorrcoef[i] = np.corrcoef(nf[:-1], nf[1:])[0][1] #F54
+        #autocovs = np.cov(nf[:-1], nf[1:])[0][1] # not used for anything...
  
-        sautopdc=[slopes[j+1] for j in range(len(slopes)-1)]
+        #sautopdc=[slopes[j+1] for j in range(len(slopes)-1)] = slopes[1:]
 
-        sautocorrcoef[i] = np.corrcoef(slopes[:-1:], sautopdc)[0][1]
-        sautocovs = np.cov(slopes[:-1:],sautopdc)[0][1]
+        sautocorrcoef[i] = np.corrcoef(slopes[:-1], slopes[1:])[0][1] #F55
+        #sautocovs = np.cov(slopes[:-1:],slopes[1:])[0][1] # not used for anything...
         
         flatness = [np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])- np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemax]
 
-        flatmean[i] = np.nansum(flatness)/len(flatness)
+        flatmean[i] = np.nansum(flatness)/len(flatness) #F55
 
         # trying flatness w slopes and nf rather than "corr" vals, despite orig def in RN's program
-        tflatness = [-np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])+ np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemins]
-
-        tflatmean[i] = np.nansum(tflatness) / len(tflatness) 
+        tflatness = [-np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])+ np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemins] 
+        # tflatness for mins, flatness for maxes
+        tflatmean[i] = np.nansum(tflatness) / len(tflatness) #F56
 
         roundness=[np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemax]
 
-        roundmean[i] = np.nansum(roundness) / len(roundness)
+        roundmean[i] = np.nansum(roundness) / len(roundness) #F57
 
         troundness = [np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemins]
-	
-        troundmean[i] = np.nansum(troundness)/len(troundness)
-        roundrat[i] = roundmean[i] / troundmean[i]
+        
+        troundmean[i] = np.nansum(troundness)/len(troundness) #F58
+        roundrat[i] = roundmean[i] / troundmean[i] #F59
 
-        flatrat[i] = flatmean[i] / tflatmean[i]
+        flatrat[i] = flatmean[i] / tflatmean[i] #F60
 
     final_features = np.vstack((longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat))
     
@@ -418,7 +431,7 @@ def feature_calc(filelist):
 #final list of features - look up vstack and/or append to consolidate these 
 
 #things that are apparently broken:
-#numoutliers   Dan: Seems like an easy fix, see comments above
+#numoutliers   Dan: Seems to be fine, just looks like the sample file has nothing outside 4 sigma?
 
 f = 'speedtest'
 print(feature_calc(f))
