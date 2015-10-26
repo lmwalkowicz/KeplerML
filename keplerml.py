@@ -1,4 +1,3 @@
-%%timeit
 # L.M. Walkowicz
 # Rewrite of Revant's feature calculations, plus additional functions for vetting outliers
 
@@ -28,6 +27,7 @@ import commands
 # import utils
 import itertools
 #from astropy.io import fits
+from multiprocessing import Pool
 
 def read_revant_pars(parfile):
     pars = [line.strip() for line in open(parfile)]
@@ -168,7 +168,7 @@ def calc_maxmin_periodics(t, nf, err):
     #D: shifts everything to the left for some reason.
     #autopdcmax = [naivemax[j+1] for j in range(len(naivemax)-1)] = naivemax[1:]
     
-    #naivemax[:-1:] is naivemax without the last value and autopdcmax is naivemax without the first value. why do this?
+    #naivemax[:-1:] is naivemax without the last value and autopdcmax is naivemax without the first value. why do this?a
     #np.corrcoef(array) returns a correlation coefficient matrix. I.e. a normalized covariance matrix
     """
     It looks like it compares each point to it's next neighbor, hence why they're offset, 
@@ -225,6 +225,129 @@ def lc_examine(filelist, style='-'):
         plt.show()
 
     return
+def fcalc(nfile):
+    # Keeping track of progress, noting every thousand files completed.
+
+    t,nf,err = read_kepler_curve(nfile)
+
+    # t = time
+    # err = error
+    # nf = normalized flux. Same as mf but offset by 1 to center at 0?
+
+    longtermtrend = np.polyfit(t, nf, 1)[0] # Feature 1 (Abbr. F1) overall slope
+    yoff = np.polyfit(t, nf, 1)[1] # Not a feature? y-intercept of linear fit
+    meanmedrat = np.mean(nf) / np.median(nf) # F2
+    skews = scipy.stats.skew(nf) # F3
+    varss = np.var(nf) # F4
+    coeffvar = np.std(nf)/np.mean(nf) #F5
+    stds = np.std(nf) #F6
+
+    corrnf = nf - longtermtrend*t - yoff #this removes any linear slope to lc so you can look at just troughs - is this a sign err tho?
+    # D: I don't think there's a sign error
+
+    # Features 7 to 10
+    numoutliers, numposoutliers, numnegoutliers, numout1s = calc_outliers_pts(t, nf)
+
+    kurt = scipy.stats.kurtosis(nf)
+
+    mad = np.median([abs(nf[j]-np.median(nf)) for j in range(len(nf))])
+
+    # slopes array contains features 13-30
+    slopes, corrslopes, secder, slopes_array = calc_slopes(t, nf, corrnf) 
+
+    maxslope = slopes_array[0]
+    minslope = slopes_array[1]
+    meanpslope  = slopes_array[2]
+    meannslope  = slopes_array[3]
+    g_asymm = slopes_array[4]
+    rough_g_asymm  = slopes_array[5]
+    diff_asymm  = slopes_array[6]
+    skewslope  = slopes_array[7]
+    varabsslope  = slopes_array[8]
+    varslope  = slopes_array[9]
+    meanabsslope  = slopes_array[10]
+    absmeansecder = slopes_array[11]
+    num_pspikes = slopes_array[12]
+    num_nspikes  = slopes_array[13]
+    num_psdspikes = slopes_array[14]
+    num_nsdspikes = slopes_array[15]
+    stdratio = slopes_array[16]
+    pstrend = slopes_array[17]
+
+    # Checks if the flux crosses the zero line.
+    zcrossind= [j for j in range(len(nf)-1) if corrnf[j]*corrnf[j+1]<0]
+    num_zcross = len(zcrossind) #F31
+
+    plusminus=[j for j in range(1,len(slopes)) if (slopes[j]<0)&(slopes[j-1]>0)]
+    num_pm = len(plusminus)
+
+    # peak to peak array contains features 33 - 42
+    peaktopeak_array, naivemax, naivemins = calc_maxmin_periodics(t, nf, err)
+
+    len_nmax=peaktopeak_array[0]
+    len_nmin=peaktopeak_array[1]
+    mautocorrcoef=peaktopeak_array[2]
+    ptpslopes=peaktopeak_array[3]
+    periodicity=peaktopeak_array[4]
+    periodicityr=peaktopeak_array[5]
+    naiveperiod=peaktopeak_array[6]
+    maxvars=peaktopeak_array[7]
+    maxvarsr=peaktopeak_array[8]
+    oeratio=peaktopeak_array[9]
+
+    # amp here is actually amp_2 in revantese
+    # 2x the amplitude (peak-to-peak really)
+    amp = np.percentile(nf,99)-np.percentile(nf,1) #F43
+    normamp = amp / np.mean(nf) #this should prob go, since flux is norm'd #F44
+
+    # ratio of points within 10% of middle to total number of points 
+    mbp = len([nf[j] for j in range(len(nf)) if (nf[j] < (np.median(nf) + 0.1*amp)) & (nf[j] > (np.median(nf)-0.1*amp))]) / len(nf) #F45
+
+    f595 = np.percentile(nf,95)-np.percentile(nf,5)
+    f1090 =np.percentile(nf,90)-np.percentile(nf,10)
+    f1782 =np.percentile(nf, 82)-np.percentile(nf, 17)
+    f2575 =np.percentile(nf, 75)-np.percentile(nf, 25)
+    f3267 =np.percentile(nf, 67)-np.percentile(nf, 32)
+    f4060 =np.percentile(nf, 60)-np.percentile(nf, 40)
+    mid20 =f4060/f595 #F46
+    mid35 =f3267/f595 #F47
+    mid50 =f2575/f595 #F48
+    mid65 =f1782/f595 #F49
+    mid80 =f1090/f595 #F50 
+
+    percentamp = max([(nf[j]-np.median(nf)) / np.median(nf) for j in range(len(nf))]) #F51
+    magratio = (max(nf)-np.median(nf)) / amp #F52
+
+    #autopdc=[nf[j+1] for j in range(len(nf)-1)] = nf[1:]
+    autocorrcoef = np.corrcoef(nf[:-1], nf[1:])[0][1] #F54
+    #autocovs = np.cov(nf[:-1], nf[1:])[0][1] # not used for anything...
+
+    #sautopdc=[slopes[j+1] for j in range(len(slopes)-1)] = slopes[1:]
+
+    sautocorrcoef = np.corrcoef(slopes[:-1], slopes[1:])[0][1] #F55
+    #sautocovs = np.cov(slopes[:-1:],slopes[1:])[0][1] # not used for anything...
+
+    flatness = [np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])- np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemax]
+
+    flatmean = np.nansum(flatness)/len(flatness) #F55
+
+    # trying flatness w slopes and nf rather than "corr" vals, despite orig def in RN's program
+    tflatness = [-np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])+ np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemins] 
+    # tflatness for mins, flatness for maxes
+    tflatmean = np.nansum(tflatness) / len(tflatness) #F56
+
+    roundness=[np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemax]
+
+    roundmean = np.nansum(roundness) / len(roundness) #F57
+
+    troundness = [np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemins]
+
+    troundmean = np.nansum(troundness)/len(troundness) #F58
+    roundrat = roundmean / troundmean #F59
+
+    flatrat = flatmean / tflatmean #F60
+
+    return longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat
 
 def feature_calc(filelist):
 
@@ -293,136 +416,76 @@ def feature_calc(filelist):
     troundmean =np.zeros(numlcs)
     roundrat =np.zeros(numlcs)
     flatrat=np.zeros(numlcs)
-
-
-    for i in range(len(files)):
-        # Keeping track of progress, noting every thousand files completed.
-        if (i % 1000. == 0):
-            print i
-            # below command prints out a bit more info about the progress,
-            # personal preference thing only really.
-            print("%s/%s %s percent complete" % (i,len(files),100*i/len(files)))
-
-        t,nf,err = read_kepler_curve(files[i])
-
-        # t = time
-        # err = error
-        # nf = normalized flux. Same as mf but offset by 1 to center at 0?
-
-        longtermtrend[i] = np.polyfit(t, nf, 1)[0] # Feature 1 (Abbr. F1) overall slope
-        yoff = np.polyfit(t, nf, 1)[1] # Not a feature? y-intercept of linear fit
-        meanmedrat[i] = np.mean(nf) / np.median(nf) # F2
-        skews[i] = scipy.stats.skew(nf) # F3
-        varss[i] = np.var(nf) # F4
-        coeffvar[i] = np.std(nf)/np.mean(nf) #F5
-        stds[i] = np.std(nf) #F6
-
-        corrnf = nf - longtermtrend[i]*t - yoff #this removes any linear slope to lc so you can look at just troughs - is this a sign err tho?
-        # D: I don't think there's a sign error
-        
-        # Features 7 to 10
-        numoutliers[i], numposoutliers[i], numnegoutliers[i], numout1s[i] = calc_outliers_pts(t, nf)
-
-        kurt[i] = scipy.stats.kurtosis(nf)
-
-        mad[i] = np.median([abs(nf[j]-np.median(nf)) for j in range(len(nf))])
-
-        # slopes array contains features 13-30
-        slopes, corrslopes, secder, slopes_array = calc_slopes(t, nf, corrnf) 
-
-        maxslope[i] = slopes_array[0]
-        minslope[i] = slopes_array[1]
-        meanpslope[i]  = slopes_array[2]
-        meannslope[i]  = slopes_array[3]
-        g_asymm[i] = slopes_array[4]
-        rough_g_asymm[i]  = slopes_array[5]
-        diff_asymm[i]  = slopes_array[6]
-        skewslope[i]  = slopes_array[7]
-        varabsslope[i]  = slopes_array[8]
-        varslope[i]  = slopes_array[9]
-        meanabsslope[i]  = slopes_array[10]
-        absmeansecder[i] = slopes_array[11]
-        num_pspikes[i] = slopes_array[12]
-        num_nspikes[i]  = slopes_array[13]
-        num_psdspikes[i] = slopes_array[14]
-        num_nsdspikes[i] = slopes_array[15]
-        stdratio[i]  = slopes_array[16]
-        pstrend[i]  = slopes_array[17]
-        
-        # Checks if the flux crosses the zero line.
-        zcrossind= [j for j in range(len(nf)-1) if corrnf[j]*corrnf[j+1]<0]
-        num_zcross[i] = len(zcrossind) #F31
-
-        plusminus=[j for j in range(1,len(slopes)) if (slopes[j]<0)&(slopes[j-1]>0)]
-        num_pm[i] = len(plusminus)
-
-        # peak to peak array contains features 33 - 42
-        peaktopeak_array, naivemax, naivemins = calc_maxmin_periodics(t, nf, err)
-        
-        len_nmax[i]=peaktopeak_array[0]
-        len_nmin[i]=peaktopeak_array[1]
-        mautocorrcoef[i]=peaktopeak_array[2]
-        ptpslopes[i]=peaktopeak_array[3]
-        periodicity[i]=peaktopeak_array[4]
-        periodicityr[i]=peaktopeak_array[5]
-        naiveperiod[i]=peaktopeak_array[6]
-        maxvars[i]=peaktopeak_array[7]
-        maxvarsr[i]=peaktopeak_array[8]
-        oeratio[i]=peaktopeak_array[9]
-        
-        """D: Bookmark"""
-        # amp here is actually amp_2 in revantese
-        # 2x the amplitude (peak-to-peak really)
-        amp[i] = np.percentile(nf,99)-np.percentile(nf,1) #F43
-        normamp[i] = amp[i] / np.mean(nf) #this should prob go, since flux is norm'd #F44
-        
-        # ratio of points within 10% of middle to total number of points 
-        mbp[i] = len([nf[j] for j in range(len(nf)) if (nf[j] < (np.median(nf) + 0.1*amp[i])) & (nf[j] > (np.median(nf)-0.1*amp[i]))]) / len(nf) #F45
-
-        f595 = np.percentile(nf,95)-np.percentile(nf,5)
-        f1090 =np.percentile(nf,90)-np.percentile(nf,10)
-        f1782 =np.percentile(nf, 82)-np.percentile(nf, 17)
-        f2575 =np.percentile(nf, 75)-np.percentile(nf, 25)
-        f3267 =np.percentile(nf, 67)-np.percentile(nf, 32)
-        f4060 =np.percentile(nf, 60)-np.percentile(nf, 40)
-        mid20[i] =f4060/f595 #F46
-        mid35[i] =f3267/f595 #F47
-        mid50[i] =f2575/f595 #F48
-        mid65[i] =f1782/f595 #F49
-        mid80[i] =f1090/f595 #F50 
-
-        percentamp[i] = max([(nf[j]-np.median(nf)) / np.median(nf) for j in range(len(nf))]) #F51
-        magratio[i] = (max(nf)-np.median(nf)) / amp[i] #F52
-
-        #autopdc=[nf[j+1] for j in range(len(nf)-1)] = nf[1:]
-        autocorrcoef[i] = np.corrcoef(nf[:-1], nf[1:])[0][1] #F54
-        #autocovs = np.cov(nf[:-1], nf[1:])[0][1] # not used for anything...
- 
-        #sautopdc=[slopes[j+1] for j in range(len(slopes)-1)] = slopes[1:]
-
-        sautocorrcoef[i] = np.corrcoef(slopes[:-1], slopes[1:])[0][1] #F55
-        #sautocovs = np.cov(slopes[:-1:],slopes[1:])[0][1] # not used for anything...
-        
-        flatness = [np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])- np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemax]
-
-        flatmean[i] = np.nansum(flatness)/len(flatness) #F55
-
-        # trying flatness w slopes and nf rather than "corr" vals, despite orig def in RN's program
-        tflatness = [-np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])+ np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemins] 
-        # tflatness for mins, flatness for maxes
-        tflatmean[i] = np.nansum(tflatness) / len(tflatness) #F56
-
-        roundness=[np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemax]
-
-        roundmean[i] = np.nansum(roundness) / len(roundness) #F57
-
-        troundness = [np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemins]
-        
-        troundmean[i] = np.nansum(troundness)/len(troundness) #F58
-        roundrat[i] = roundmean[i] / troundmean[i] #F59
-
-        flatrat[i] = flatmean[i] / tflatmean[i] #F60
-
+    """for i in range(numlcs):
+        longtermtrend[i],meanmedrat[i],skews[i],varss[i],coeffvar[i],stds[i],numoutliers[i],numnegoutliers[i],numposoutliers[i],numout1s[i],kurt[i],mad[i],maxslope[i],minslope[i],meanpslope[i],meannslope[i],g_asymm[i],rough_g_asymm[i],diff_asymm[i],skewslope[i],varabsslope[i],varslope[i],meanabsslope[i],absmeansecder[i],num_pspikes[i],num_nspikes[i],num_psdspikes[i],num_nsdspikes[i],stdratio[i],pstrend[i],num_zcross[i],num_pm[i],len_nmax[i],len_nmin[i],mautocorrcoef[i],ptpslopes[i],periodicity[i],periodicityr[i],naiveperiod[i],maxvars[i],maxvarsr[i],oeratio[i],amp[i],normamp[i],mbp[i],mid20[i],mid35[i],mid50[i],mid65[i],mid80[i],percentamp[i],magratio[i],sautocorrcoef[i],autocorrcoef[i],flatmean[i],tflatmean[i],roundmean[i],troundmean[i],roundrat[i],flatrat[i]=fcalc(files[i])
+    """
+    if __name__ == '__main__':    
+        p = Pool(4)
+        wholecalc = p.map(fcalc,files)
+        for i in range(numlcs):
+            longtermtrend[i]=wholecalc[i][0]
+            meanmedrat[i]=wholecalc[i][1]
+            skews[i]=wholecalc[i][2]
+            varss[i]=wholecalc[i][3]
+            coeffvar[i]=wholecalc[i][4]
+            stds[i]=wholecalc[i][5]
+            numoutliers[i]=wholecalc[i][6]
+            numnegoutliers[i]=wholecalc[i][7]
+            numposoutliers[i]=wholecalc[i][8]
+            numout1s[i]=wholecalc[i][9] 
+            kurt[i]=wholecalc[i][10]
+            mad[i]=wholecalc[i][11]
+            maxslope[i]=wholecalc[i][12]
+            minslope[i]=wholecalc[i][13]
+            meanpslope[i]=wholecalc[i][14]
+            meannslope[i]=wholecalc[i][15]
+            g_asymm[i]=wholecalc[i][16]
+            rough_g_asymm[i]=wholecalc[i][17]
+            diff_asymm[i]=wholecalc[i][18]
+            skewslope[i]=wholecalc[i][19]
+            varabsslope[i]=wholecalc[i][20]
+            varslope[i]=wholecalc[i][21]
+            meanabsslope[i]=wholecalc[i][22]
+            absmeansecder[i]=wholecalc[i][23]
+            num_pspikes[i]=wholecalc[i][24]
+            num_nspikes[i]=wholecalc[i][25]
+            num_psdspikes[i]=wholecalc[i][26]
+            num_nsdspikes[i]=wholecalc[i][27]
+            stdratio[i]=wholecalc[i][28]
+            pstrend[i]=wholecalc[i][29]
+            num_zcross[i]=wholecalc[i][30]
+            num_pm[i]=wholecalc[i][31]
+            len_nmax[i]=wholecalc[i][32]
+            len_nmin[i]=wholecalc[i][33]
+            mautocorrcoef[i]=wholecalc[i][34]
+            ptpslopes[i]=wholecalc[i][35]
+            periodicity[i]=wholecalc[i][36]
+            periodicityr[i]=wholecalc[i][37]
+            naiveperiod[i]=wholecalc[i][38]
+            maxvars[i]=wholecalc[i][39]
+            maxvarsr[i]=wholecalc[i][40]
+            oeratio[i]=wholecalc[i][41]
+            amp[i]=wholecalc[i][42]
+            normamp[i]=wholecalc[i][43]
+            mbp[i]=wholecalc[i][44]
+            mid20[i]=wholecalc[i][45]
+            mid35[i]=wholecalc[i][46]
+            mid50[i]=wholecalc[i][47]
+            mid65[i]=wholecalc[i][48]
+            mid80[i]=wholecalc[i][49]
+            percentamp[i]=wholecalc[i][50]
+            magratio[i]=wholecalc[i][51]
+            sautocorrcoef[i]=wholecalc[i][52]
+            autocorrcoef[i]=wholecalc[i][53]
+            flatmean[i]=wholecalc[i][54]
+            tflatmean[i]=wholecalc[i][55]
+            roundmean[i]=wholecalc[i][56]
+            troundmean[i]=wholecalc[i][57]
+            roundrat[i]=wholecalc[i][58]
+            flatrat[i]=wholecalc[i][59]
+        p.close()
+        p.join()
+    
     final_features = np.vstack((longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat))
     
 
