@@ -1,7 +1,7 @@
 # L.M. Walkowicz
 # Rewrite of Revant's feature calculations, plus additional functions for vetting outliers
 
-
+from __future__ import division
 import random
 import numpy as np
 import scipy as sp
@@ -61,7 +61,7 @@ def plot_kepler_curve(t, nf):
     plt.show()
 
 def calc_outliers_pts(t, nf):
-    # Is t really a necessary input?
+    # Is t really a necessary input? The answer is no, but eh, why change it
     posthreshold = np.mean(nf)+4*np.std(nf)
     negthreshold = np.mean(nf)-4*np.std(nf)
     
@@ -83,14 +83,14 @@ def calc_slopes(t, nf, corrnf):
 
     slope_array = np.zeros(20)
 
-    #slopes looks at point j and the next point to find the slope. Delta f/ Delta t
+    #Delta flux/ Delta time
     slopes=[(nf[j+1]-nf[j])/(t[j+1]-t[j]) for j in range (len(nf)-1)]
     #corrslopes removes the longterm linear trend (if any) and then looks at the slope
     corrslopes=[(corrnf[j+1]-corrnf[j])/(t[j+1]-t[j]) for j in range (len(corrnf)-1)]
     meanslope = np.mean(slopes)
     # by looking at where the 99th percentile is instead of just the largest number,
     # I think it avoids the extremes which might not be relevant (might be unreliable data)
-    # Is the miniumum slope the most negative one, or the flattest one?
+    # Is the miniumum slope the most negative one, or the flattest one? Most negative
     maxslope=np.percentile(slopes,99)
     minslope=np.percentile(slopes,1)
     # Separating positive slopes and negative slopes
@@ -296,7 +296,7 @@ def fcalc(nfile):
     oeratio=peaktopeak_array[9]
 
     # amp here is actually amp_2 in revantese
-    # 2x the amplitude (peak-to-peak really)
+    # 2x the amplitude (peak-to-peak really), the 1st percentile will be negative, so it's really adding magnitudes
     amp = np.percentile(nf,99)-np.percentile(nf,1) #F43
     normamp = amp / np.mean(nf) #this should prob go, since flux is norm'd #F44
 
@@ -416,9 +416,9 @@ def feature_calc(filelist):
     troundmean =np.zeros(numlcs)
     roundrat =np.zeros(numlcs)
     flatrat=np.zeros(numlcs)
-    """for i in range(numlcs):
-        longtermtrend[i],meanmedrat[i],skews[i],varss[i],coeffvar[i],stds[i],numoutliers[i],numnegoutliers[i],numposoutliers[i],numout1s[i],kurt[i],mad[i],maxslope[i],minslope[i],meanpslope[i],meannslope[i],g_asymm[i],rough_g_asymm[i],diff_asymm[i],skewslope[i],varabsslope[i],varslope[i],meanabsslope[i],absmeansecder[i],num_pspikes[i],num_nspikes[i],num_psdspikes[i],num_nsdspikes[i],stdratio[i],pstrend[i],num_zcross[i],num_pm[i],len_nmax[i],len_nmin[i],mautocorrcoef[i],ptpslopes[i],periodicity[i],periodicityr[i],naiveperiod[i],maxvars[i],maxvarsr[i],oeratio[i],amp[i],normamp[i],mbp[i],mid20[i],mid35[i],mid50[i],mid65[i],mid80[i],percentamp[i],magratio[i],sautocorrcoef[i],autocorrcoef[i],flatmean[i],tflatmean[i],roundmean[i],troundmean[i],roundrat[i],flatrat[i]=fcalc(files[i])
-    """
+    
+    # The following runs the program for the list of files in parallel. The number in Pool() should be the number
+    # of processors available on the machine's cpu (or 1 less to let the machine keep doing other processes)
     if __name__ == '__main__':    
         p = Pool(4)
         wholecalc = p.map(fcalc,files)
