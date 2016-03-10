@@ -35,16 +35,20 @@ identifier = raw_input('Enter the identifier of the data: ')
 # nclusters could be obtained through the optimalK.py script
 nclusters = int(raw_input('Enter the number of clusters expected: '))
 
+# Xbyfeature is an array organized by feature. [[all feature 1 data],[all feature 2 data],...] 
+# Useful for plotting and finding extrema.
+def Xbyfeature(X):
+    return [[X[i][j] for i in range(len(X))] for j in range(len(X[0]))]
 
 def bounding_box(X):
     # X is the data that comes in, it's organized by lightcurve[[all features for lc 1],[features for lc2],...]
-    
-    # Xbyfeature is an array organized by feature. [[all feature 1 data],[all feature 2 data],...] 
-    Xbyfeature = [[X[i][j] for i in range(len(X))] for j in range(len(X[0]))]
+    # To find minima we need to consider all points for each feature seperate from the other features.
+    Xbyfeature = Xbyfeature(X)
 
     # xmin/xmax will be an array of the minimum/maximum values of the features
     xmin=[]
     xmax=[]
+    # Create the minimum vertex, and the maximum vertex for the box
     for feature in range(60):
         xmin.append(min(Xbyfeature[feature]))
         xmax.append(max(Xbyfeature[feature]))
@@ -59,31 +63,40 @@ def KMeans_clusters(data,nclusters):
     clusters = est.labels_
     centers = est.cluster_centers_
     
+    # Sanity check, if this isn't an outlier than something is wrong.
+    
     """controlPoint = np.array([10000 for i in range(len(data[0]))])
     
     data=np.append(data,[controlPoint],axis=0)
     clusters=np.append(clusters,[1],axis=0)"""
+    
     """
     Initializing arrays
     """
-    cluster = [[] for i in range(nclusters)]
-    clusterIndexes = [[] for i in range(nclusters)]
-    twoSigma = [[] for i in range(nclusters)]
-    outliers = [[] for i in range(nclusters)]
-    distFromCenter = [[] for i in range(nclusters)]
-    
+    cluster = []
+    clusterIndexes = []
+    twoSigma = []
+    outliers = []
+    allTypical=[]
     allOutliers=[]
+    # Will try to stick to the following:
+    # cluster i, lightcurve j, feature k
     for i in range(nclusters):
-        # need to keep track of which points get pulled into each cluster:
-        clusterIndexes[i]=[j for j in range(len(data)) if clusters[j]==i]
-        # below originally in same form as clusterIndexes, should probably change back
-        for j in range(len(clusterIndexes[i])):
-            cluster[i].append(data[clusterIndexes[i][j]])
+        # Keeping track of which points get pulled into each cluster:
+        clusterIndexes.append([j for j in range(len(data)) if clusters[j]==i])
+        # Separating the clusters out into their own arrays (w/in the cluster array)
+        cluster.append([data[clusterIndexes[i][j]] for j in range(len(clusterIndexes[i]))])
+        
+        #Alternatively: (might have had some issues witht he above, not sure)
+        #cluster.append([])
+        #for j in range(len(clusterIndexes[i])):
+        #    cluster[i].append(data[clusterIndexes[i][j]])
 
-        distFromCenter = [0 for k in range(len(cluster[i]))] # reinitializing this array
+        distFromCenter = [0 for j in range(len(cluster[i]))] # reinitializing for each cluster
         
         """
         ========== Checking density of clusters ============
+        Given that some of the clusters may have 0 spread in a given feature, I'm not confident that this is meaningful.
         """
         (xmin,xmax)=bounding_box(cluster[i]) # get the minimum and maximum values for both
         diff=[xmax[n]-xmin[n] for n in range(len(xmin))]
@@ -96,36 +109,50 @@ def KMeans_clusters(data,nclusters):
         print volOfClusterBB"""
         
         """
-        ========== Finding points outside of 2-sigma ===========
+        ========== Finding points outside of the cutoff ===========
         """
         
-        twoSigma[i]=(2*np.std(cluster[i]))
+        twoSigma.append(2*np.std(cluster[i]))
         
+        """
+            ==== Calculating distances to each point ====
+        """
         # Calculate distances to each point in each cluster to the center of its cluster
+        centerloc=centers[i] # center of the cluster
         for j in range(len(cluster[i])):
-            centerloc=centers[i] # center of the cluster
             dataloc=cluster[i][j] # location of the datapoint
             sqrd=0
-            for x in range(len(centers)):
-                sqrd+=pow(dataloc[x]-centerloc[x],2) # (x-x0)^2+(y-y0)^2+...
+            for k in range(len(centers)):
+                sqrd+=pow(dataloc[k]-centerloc[k],2) # (x-x0)^2+(y-y0)^2+...
             distance = pow(sqrd,0.5) # sqrt((x-x0)^2+(y-y0)^2+...)
             distFromCenter[j]=distance 
-
-        # cluster i, lightcurve j, feature k
-        #distFromCenter[i]=[distance(center[i],cluster[i][j]) for j in range(len(cluster))]
+        """
+            ==== Finding outliers and the standard ====
+        """
+        cutoff=.5*max(distFromCenter)
         #outliers=[k for k in range(len(cluster[i])) if distFromCenter[k]>twoSigma[i]]
-        outliers=[k for k in range(len(cluster[i])) if distFromCenter[k]>=.5*max(distFromCenter)]
         
-        # place outliers from this cluster into general outlier list
+        outliers=[k for k in range(len(cluster[i])) if distFromCenter[k]>=cutoff] # recalculated for each cluster
+        outliers.sort()
+        
+        typical=[k for k in range(len(cluster[i])) if distFromCenter[k]==min(distFromCenter)]
+        typical.sort()
+        # Arbitrarily large integer to indicate a new cluster is being considered.
+        allTypical.append(987654321)
+        # Add typical lightcurve to list. Only 1 produced at present, but this may change. The following
+        # accounts for adding more typicals later.
+        for k in typical:    
+            allTypical.append(clusterIndexes[i][k])
+            
+        # place outliers from this cluster into general outlier list        
+        allOutliers.append(987654321)
         if len(outliers)==0:
             print("none")
         else:
             for k in outliers:
-                allOutliers.append(clusterIndexes[i][k])      
+                allOutliers.append(clusterIndexes[i][k])
         
-    allOutliers.sort()
-        
-    return clusters,allOutliers
+    return clusters,allOutliers,allTypical
 
 def plot_fit(ffeatures,clusters):
     # Set the dictionaries that contain labels and data. Radiobuttons will have labels from listoffeatures
@@ -254,17 +281,32 @@ def plot_fit(ffeatures,clusters):
     radio311.on_clicked(axis3)
 
     plt.show()
-
-ffeaturesID = str(identifier)+'dataByFeature.npy'
-ffeatures = np.load(ffeaturesID)
+    
+"""ffeaturesID = str(identifier)+'dataByFeature.npy'
+ffeatures = np.load(ffeaturesID)"""
 dataID = str(identifier)+'dataByLightCurve.npy'
 data = np.load(dataID)
+ffeatures=[[data[i][j] for i in range(len(data))] for j in range(len(data[0]))]
 filelist = str(identifier)+'filelist'
 files = [line.strip() for line in open(filelist)]
 
-clusterlabels,outliers=KMeans_clusters(data,nclusters)
-
+clusterlabels,outliers,typical=KMeans_clusters(data,nclusters)
+cluster=1
+print("Typical")
+for i in typical:
+    if i == 987654321:
+        print('')
+        print("Cluster: %s"%cluster)
+        cluster+=1
+    else:
+        print files[i]
+print("Outliers")
+cluster=1
 for i in outliers:
-    print files[i]
-
+    if i == 987654321:
+        print('')
+        print("Cluster: %s"%cluster)
+        cluster+=1
+    else:
+        print files[i]
 plot_fit(ffeatures,clusterlabels)
