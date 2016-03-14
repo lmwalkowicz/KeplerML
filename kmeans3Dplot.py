@@ -35,15 +35,15 @@ identifier = raw_input('Enter the identifier of the data: ')
 # nclusters could be obtained through the optimalK.py script
 nclusters = int(raw_input('Enter the number of clusters expected: '))
 
-# Xbyfeature is an array organized by feature. [[all feature 1 data],[all feature 2 data],...] 
+# byFeature is an array organized by feature. [[all feature 1 data],[all feature 2 data],...] 
 # Useful for plotting and finding extrema.
-def Xbyfeature(X):
+def byFeature(X):
     return [[X[i][j] for i in range(len(X))] for j in range(len(X[0]))]
 
 def bounding_box(X):
     # X is the data that comes in, it's organized by lightcurve[[all features for lc 1],[features for lc2],...]
     # To find minima we need to consider all points for each feature seperate from the other features.
-    Xbyfeature = Xbyfeature(X)
+    Xbyfeature = byFeature(X)
 
     # xmin/xmax will be an array of the minimum/maximum values of the features
     xmin=[]
