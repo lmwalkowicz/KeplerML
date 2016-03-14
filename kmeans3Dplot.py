@@ -32,7 +32,7 @@ from matplotlib.widgets import RadioButtons
 
 identifier = raw_input('Enter the identifier of the data: ')
 
-# nclusters could be obtained through the optimalK.py script
+# nclusters could (someday *should*) be obtained through the optimalK.py script 
 nclusters = int(raw_input('Enter the number of clusters expected: '))
 
 # byFeature is an array organized by feature. [[all feature 1 data],[all feature 2 data],...] 
@@ -300,6 +300,8 @@ for i in typical:
         cluster+=1
     else:
         print files[i]
+        outputfile = open('cluster%sfilelist'%(cluster-1),'w')
+        outputfile.write('%s\n'%files[i])
 print("Outliers")
 cluster=1
 for i in outliers:
@@ -309,4 +311,5 @@ for i in outliers:
         cluster+=1
     else:
         print files[i]
-plot_fit(ffeatures,clusterlabels)
+        with open('cluster%sfilelist'%(cluster-1),'a') as outputfile:
+            outputfile.write('%s\n'%files[i])
