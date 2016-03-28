@@ -31,7 +31,8 @@ from multiprocessing import Pool
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import RadioButtons
 
-
+filelist=str(raw_input('Enter name of file list: '))
+identifier=str(raw_input('Enter a unique identifier: '))
 
 listoffeatures = ['longtermtrend', 'meanmedrat', 'skews', 'varss', 'coeffvar', 'stds', 'numoutliers', 'numnegoutliers', 'numposoutliers', 'numout1s', 'kurt', 'mad', 'maxslope', 'minslope', 'meanpslope', 'meannslope', 'g_asymm', 'rough_g_asymm', 'diff_asymm', 'skewslope', 'varabsslope', 'varslope', 'meanabsslope', 'absmeansecder', 'num_pspikes', 'num_nspikes', 'num_psdspikes', 'num_nsdspikes','stdratio', 'pstrend', 'num_zcross', 'num_pm', 'len_nmax', 'len_nmin', 'mautocorrcoef', 'ptpslopes', 'periodicity', 'periodicityr', 'naiveperiod', 'maxvars', 'maxvarsr', 'oeratio', 'amp', 'normamp','mbp', 'mid20', 'mid35', 'mid50', 'mid65', 'mid80', 'percentamp', 'magratio', 'sautocorrcoef', 'autocorrcoef', 'flatmean', 'tflatmean', 'roundmean', 'troundmean', 'roundrat', 'flatrat']
 
@@ -83,7 +84,6 @@ def calc_outliers_pts(t, nf):
     numoutliers=numposoutliers+numnegoutliers
     
     return numoutliers, numposoutliers, numnegoutliers, numout1s
-
 
 def calc_slopes(t, nf, corrnf):
 
@@ -231,6 +231,7 @@ def lc_examine(filelist, style='-'):
         plt.show()
 
     return
+
 def fcalc(nfile):
     # Keeping track of progress, noting every thousand files completed.
 
@@ -354,258 +355,6 @@ def fcalc(nfile):
     flatrat = flatmean / tflatmean #F60
 
     return longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat
-
-def cluster_points(X, mu):
-    clusters  = {}
-    for x in X:
-        bestmukey = min([(i[0], np.linalg.norm(x-mu[i[0]])) for i in enumerate(mu)], key=lambda t:t[1])[0]
-        try:
-            clusters[bestmukey].append(x)
-        except KeyError:
-            clusters[bestmukey] = [x]
-    return clusters
- 
-def reevaluate_centers(mu, clusters):
-    newmu = []
-    keys = sorted(clusters.keys())
-    for k in keys:
-        newmu.append(np.mean(clusters[k], axis = 0))
-    return newmu
-
-def has_converged(mu, oldmu):
-    return (set([tuple(a) for a in mu]) == set([tuple(a) for a in oldmu]))
-
-def find_centers(X, K):
-    # Initialize to K random centers
-    oldmu = random.sample(X, K)
-    mu = random.sample(X, K)
-    while not has_converged(mu, oldmu):
-        oldmu = mu
-        # Assign all points in X to clusters
-        clusters = cluster_points(X, mu)
-        # Reevaluate centers
-        mu = reevaluate_centers(oldmu, clusters)
-    return(mu, clusters)
-
-def Wk(mu, clusters):
-    K = len(mu)
-    return sum([np.linalg.norm(mu[i]-c)**2/(2*len(c)) \
-               for i in range(K) for c in clusters[i]])
-
-def bounding_box(X):
-    xmin = [min(X,key=lambda a:a[i])[i] for i in range(60)]
-    xmax = [max(X,key=lambda a:a[i])[i] for i in range(60)]
-    return (xmin,xmax)
-
-def gap_statistic(X):
-    (xmin,xmax) = bounding_box(X)
-    # Dispersion for real distribution
-    ### Adjust range of clusters tried here:
-    ks = range(1,10)
-    Wks = np.zeros(len(ks))
-    Wkbs = np.zeros(len(ks))
-    sk = np.zeros(len(ks))
-    for indk, k in enumerate(ks):
-        mu, clusters = find_centers(X,k)
-        Wks[indk] = np.log(Wk(mu, clusters))
-        # Create B reference datasets
-        B = 10
-        BWkbs = np.zeros(B)
-        for i in range(B):
-            Xb = []
-            for n in range(len(X)):
-                Xb.append([random.uniform(xmin[j],xmax[j]) for j in range(60)])
-            Xb = np.array(Xb)
-            mu, clusters = find_centers(Xb,k)
-            BWkbs[i] = np.log(Wk(mu, clusters))
-        Wkbs[indk] = sum(BWkbs)/B
-        sk[indk] = np.sqrt(sum((BWkbs-Wkbs[indk])**2)/B)
-    sk = sk*np.sqrt(1+1/B)
-    return(ks, Wks, Wkbs, sk)
-
-def optimalK(data):
-    ks, logWks, logWkbs, sk = gap_statistic(data)
-    gs = logWkbs - logWks
-    return min([k for k in range(1,len(ks)-1) if gs[k]-(gs[k+1]-sk[k+1]) >= 0])
-
-def kmeans3D(ffeatures,data):
-    # Run KMeans, get clusters
-    npdata = np.array(data)
-    est = KMeans(n_clusters=optimalK(npdata))
-    est.fit(npdata)
-    labels = est.labels_
-    
-    # Set the dictionaries that contain labels and data. Radiobuttons will have labels from listoffeatures
-    # Betterlabels will contain the titles of axes we'll actually want on there
-    listoffeatures = ['longtermtrend', 'meanmedrat', 'skews', 'varss', 'coeffvar', 'stds', 'numoutliers', 'numnegoutliers', 'numposoutliers', 'numout1s', 'kurt', 'mad', 'maxslope', 'minslope', 'meanpslope', 'meannslope', 'g_asymm', 'rough_g_asymm', 'diff_asymm', 'skewslope', 'varabsslope', 'varslope', 'meanabsslope', 'absmeansecder', 'num_pspikes', 'num_nspikes', 'num_psdspikes', 'num_nsdspikes','stdratio', 'pstrend', 'num_zcross', 'num_pm', 'len_nmax', 'len_nmin', 'mautocorrcoef', 'ptpslopes', 'periodicity', 'periodicityr', 'naiveperiod', 'maxvars', 'maxvarsr', 'oeratio', 'amp', 'normamp','mbp', 'mid20', 'mid35', 'mid50', 'mid65', 'mid80', 'percentamp', 'magratio', 'sautocorrcoef', 'autocorrcoef', 'flatmean', 'tflatmean', 'roundmean', 'troundmean', 'roundrat', 'flatrat']
-    betterlabels = ['longtermtrend', 'meanmedrat', 'skews', 'varss', 'coeffvar', 'stds', 'numoutliers', 'numnegoutliers', 'numposoutliers', 'numout1s', 'kurt', 'mad', 'maxslope', 'minslope', 'meanpslope', 'meannslope', 'g_asymm', 'rough_g_asymm', 'diff_asymm', 'skewslope', 'varabsslope', 'varslope', 'meanabsslope', 'absmeansecder', 'num_pspikes', 'Negative Spikes (Slope > 3*sigma)', 'num_psdspikes', 'num_nsdspikes','stdratio', 'pstrend', 'Longterm Trendline Crossings', 'Peaks', 'len_nmax', 'len_nmin', 'mautocorrcoef', 'ptpslopes', 'periodicity', 'periodicityr', 'naiveperiod', 'maxvars', 'maxvarsr', 'oeratio', 'amp', 'normamp','mbp', 'mid20', 'mid35', 'mid50', 'mid65', 'mid80', 'percentamp', 'magratio', 'sautocorrcoef', 'autocorrcoef', 'flatmean', 'tflatmean', 'roundmean', 'troundmean', 'roundrat', 'flatrat']
-    
-    # labeldict connects the variable's code name in listoffeatures to it's presentable name in betterlabels
-    labeldict= dict(zip(listoffeatures,betterlabels))
-    # mydict connects label to data
-    mydict = dict(zip(listoffeatures,ffeatures))
-    # labellist keeps track of what each axis should be labelled, initialized with first 3 features
-    labellist= [labeldict[listoffeatures[0]],labeldict[listoffeatures[1]],labeldict[listoffeatures[2]]]
-    
-    # axesdict could probably be accomoplished with a list, I'm partial to the dictionary because it
-    # helps me keep things straight.
-    axesdict = {'xaxis':ffeatures[0],'yaxis':ffeatures[1],'zaxis':ffeatures[2]}
-    
-    # Plot initializing stuff
-    fig = plt.figure(1)
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(axesdict['xaxis'], axesdict['yaxis'], axesdict['zaxis'], c=labels.astype(np.float))
-    plt.subplots_adjust(left=0.3)
-    ax.set_xlabel(labellist[0])
-    ax.set_ylabel(labellist[1])
-    ax.set_zlabel(labellist[2])
-
-    """
-    Matplotlib radiobuttons format poorly when there are more than ~5 buttons, this is an issue that will be resolved at some point in the future.
-    For the time being, I'm making a bunch of radiobutton sections with 5 buttons apeice. Each column represents a differnt axis.
-    The most recently clicked button will be the active one, so the color coding is less than useful.
-
-    It's not pretty but it works.
-    """
-
-    rax1p = [[0.0,.92-i/12.0,0.1,1.0/12.0] for i in range(12)]
-    
-    rax10,rax11,rax12,rax13,rax14,rax15,rax16,rax17,rax18,rax19,rax110,rax111 = plt.axes(rax1p[0]), plt.axes(rax1p[1]),plt.axes(rax1p[2]),plt.axes(rax1p[3]),plt.axes(rax1p[4]),plt.axes(rax1p[5]),plt.axes(rax1p[6]),plt.axes(rax1p[7]),plt.axes(rax1p[8]),plt.axes(rax1p[9]),plt.axes(rax1p[10]),plt.axes(rax1p[11])
-    
-    radio10,radio11,radio12,radio13,radio14,radio15,radio16,radio17,radio18,radio19,radio110,radio111 = RadioButtons(rax10, listoffeatures[0:5]),RadioButtons(rax11, listoffeatures[5:10]),RadioButtons(rax12, listoffeatures[10:15]),RadioButtons(rax13, listoffeatures[15:20]),RadioButtons(rax14, listoffeatures[20:25]),RadioButtons(rax15, listoffeatures[25:30]),RadioButtons(rax16, listoffeatures[30:35]),RadioButtons(rax17, listoffeatures[35:40]),RadioButtons(rax18, listoffeatures[40:45]),RadioButtons(rax19, listoffeatures[45:50]),RadioButtons(rax110, listoffeatures[50:55]),RadioButtons(rax111, listoffeatures[55:])
-    
-    def axis1(label):
-        # Clear the figure
-        ax.cla()
-        # Set the data for the axis to the selected, mydict contains data for label
-        axesdict['xaxis'] = [mydict[label]]
-        # Plot all that data
-        ax.scatter(mydict[label],axesdict['yaxis'],axesdict['zaxis'],c=labels.astype(np.float))
-        # Set the axis label
-        labellist[0] = label
-        ax.set_xlabel(labeldict[labellist[0]])
-        ax.set_ylabel(labeldict[labellist[1]])
-        ax.set_zlabel(labeldict[labellist[2]])
-        # Show it all
-        plt.draw()
-    
-    radio10.on_clicked(axis1)
-    radio11.on_clicked(axis1)
-    radio12.on_clicked(axis1)
-    radio13.on_clicked(axis1)
-    radio14.on_clicked(axis1)
-    radio15.on_clicked(axis1)
-    radio16.on_clicked(axis1)
-    radio17.on_clicked(axis1)
-    radio18.on_clicked(axis1)
-    radio19.on_clicked(axis1)
-    radio110.on_clicked(axis1)
-    radio111.on_clicked(axis1)
-
-
-    rax2p = [[0.1,.92-i/12.0,0.1,1.0/12.0] for i in range(12)]
-
-    rax20 = plt.axes(rax2p[0])
-    rax21 = plt.axes(rax2p[1])
-    rax22 = plt.axes(rax2p[2])
-    rax23 = plt.axes(rax2p[3])
-    rax24 = plt.axes(rax2p[4])
-    rax25 = plt.axes(rax2p[5])
-    rax26 = plt.axes(rax2p[6])
-    rax27 = plt.axes(rax2p[7])
-    rax28 = plt.axes(rax2p[8])
-    rax29 = plt.axes(rax2p[9])
-    rax210 = plt.axes(rax2p[10])
-    rax211 = plt.axes(rax2p[11])
-
-    radio20 = RadioButtons(rax20, listoffeatures[0:5])
-    radio21 = RadioButtons(rax21, listoffeatures[5:10])
-    radio22 = RadioButtons(rax22, listoffeatures[10:15])
-    radio23 = RadioButtons(rax23, listoffeatures[15:20])
-    radio24 = RadioButtons(rax24, listoffeatures[20:25])
-    radio25 = RadioButtons(rax25, listoffeatures[25:30])
-    radio26 = RadioButtons(rax26, listoffeatures[30:35])
-    radio27 = RadioButtons(rax27, listoffeatures[35:40])
-    radio28 = RadioButtons(rax28, listoffeatures[40:45])
-    radio29 = RadioButtons(rax29, listoffeatures[45:50])
-    radio210 = RadioButtons(rax210, listoffeatures[50:55])
-    radio211 = RadioButtons(rax211, listoffeatures[55:])
-    
-    def axis2(label):
-        ax.cla()
-        axesdict['yaxis'] = [mydict[label]]
-        ax.scatter(axesdict['xaxis'],mydict[label],axesdict['zaxis'],c=labels.astype(np.float))
-        labellist[1] = label
-        ax.set_xlabel(labeldict[labellist[0]])
-        ax.set_ylabel(labeldict[labellist[1]])
-        ax.set_zlabel(labeldict[labellist[2]])
-        plt.draw()
-
-    radio20.on_clicked(axis2)
-    radio21.on_clicked(axis2)
-    radio22.on_clicked(axis2)
-    radio23.on_clicked(axis2)
-    radio24.on_clicked(axis2)
-    radio25.on_clicked(axis2)
-    radio26.on_clicked(axis2)
-    radio27.on_clicked(axis2)
-    radio28.on_clicked(axis2)
-    radio29.on_clicked(axis2)
-    radio210.on_clicked(axis2)
-    radio211.on_clicked(axis2)
-
-    rax3p = [[0.2,.92-i/12.0,0.1,1.0/12.0] for i in range(12)]
-
-    rax30 = plt.axes(rax3p[0])
-    rax31 = plt.axes(rax3p[1])
-    rax32 = plt.axes(rax3p[2])
-    rax33 = plt.axes(rax3p[3])
-    rax34 = plt.axes(rax3p[4])
-    rax35 = plt.axes(rax3p[5])
-    rax36 = plt.axes(rax3p[6])
-    rax37 = plt.axes(rax3p[7])
-    rax38 = plt.axes(rax3p[8])
-    rax39 = plt.axes(rax3p[9])
-    rax310 = plt.axes(rax3p[10])
-    rax311 = plt.axes(rax3p[11])
-
-    radio30 = RadioButtons(rax30, listoffeatures[0:5])
-    radio31 = RadioButtons(rax31, listoffeatures[5:10])
-    radio32 = RadioButtons(rax32, listoffeatures[10:15])
-    radio33 = RadioButtons(rax33, listoffeatures[15:20])
-    radio34 = RadioButtons(rax34, listoffeatures[20:25])
-    radio35 = RadioButtons(rax35, listoffeatures[25:30])
-    radio36 = RadioButtons(rax36, listoffeatures[30:35])
-    radio37 = RadioButtons(rax37, listoffeatures[35:40])
-    radio38 = RadioButtons(rax38, listoffeatures[40:45])
-    radio39 = RadioButtons(rax39, listoffeatures[45:50])
-    radio310 = RadioButtons(rax310, listoffeatures[50:55])
-    radio311 = RadioButtons(rax311, listoffeatures[55:])
-
-    def axis3(label):
-        ax.cla()
-        axesdict['zaxis'] = [mydict[label]]
-        ax.scatter(axesdict['xaxis'],axesdict['yaxis'],mydict[label],c=labels.astype(np.float))
-        labellist[2] = label
-        ax.set_xlabel(labeldict[labellist[0]])
-        ax.set_ylabel(labeldict[labellist[1]])
-        ax.set_zlabel(labeldict[labellist[2]])
-        plt.draw()
-        
-    radio30.on_clicked(axis3)
-    radio31.on_clicked(axis3)
-    radio32.on_clicked(axis3)
-    radio33.on_clicked(axis3)
-    radio34.on_clicked(axis3)
-    radio35.on_clicked(axis3)
-    radio36.on_clicked(axis3)
-    radio37.on_clicked(axis3)
-    radio38.on_clicked(axis3)
-    radio39.on_clicked(axis3)
-    radio310.on_clicked(axis3)
-    radio311.on_clicked(axis3)
-
-    plt.show()
 
 def feature_calc(filelist):
 
@@ -763,15 +512,11 @@ def feature_calc(filelist):
 #things that are apparently broken:
 #numoutliers   Dan: Seems to be fine, just looks like the sample file has nothing outside 4 sigma?
 
-# print(feature_calc(f))
+# 'data' contains the output as arrays of all the features for each lightcurve, necessary for clustering
+# 'final_features' contains the output as Revant originally had it
+# 'ffeatures' contains the output as arrays of all data points for each feature, useful for plotting
+data,final_features,ffeatures = feature_calc(filelist)
 
-# data contains the output as arrays of all the features for each lightcurve, good format for kmeans ml
-# final_features contains the output as Revant originally had it
-# ffeatures contains the output as arrays of all data points for each feature, good format for plotting
-data,final_features,ffeatures = feature_calc(f)
-
-#datafile = open('DataLC','w')
-#datafile.write(str(data))
-#featurefile = open('DataF','w')
-#featurefile.write(str(ffeatures))
-#kmeans3D(ffeatures,data)
+# This will save the calculated features as numpy arrays in a .npy file, which can be imported via np.load(file)
+np.save(identifier+'dataByLightCurve',data)
+np.save(identifier+'dataByFeature',ffeatures)
