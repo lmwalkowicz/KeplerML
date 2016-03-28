@@ -86,47 +86,51 @@ def bounding_box(X):
         
     return (xmin,xmax)
 
-def Xbb(X):
+def gap_statistic(k):
+    X = np.load('tempdata.npy')
     (xmin,xmax) = bounding_box(X)
-    Xb = [random.uniform(xmin[j],xmax[j]) for j in range(60)]
-    return Xb
+    mu, clusters = find_centers(X,k)
+    Wks = np.log(Wk(mu, clusters))
+    # Create B reference datasets
+    B = 10
+    BWkbs = np.zeros(B)
+    for i in range(B):
+        Xb = []
+        for n in range(len(X)):
+            Xb.append([random.uniform(xmin[j],xmax[j]) for j in range(60)])
+        Xb = np.array(Xb)
+        mu, clusters = find_centers(Xb,k)
+        BWkbs[i] = np.log(Wk(mu, clusters))
+    Wkbs = sum(BWkbs)/B
+    sk = np.sqrt(sum((BWkbs-Wkbs)**2)/B)*np.sqrt(1+1/B)
+    gs = Wkbs - Wks
+    
+    return gs,sk
 
-def gap_statistic(X):
-    (xmin,xmax) = bounding_box(X)
+def optimalK(X):
+    # resaving the data as tempdata (generic name) so that it can be read by the main loop
+    np.save('tempdata',X)
+
     # Dispersion for real distribution
     ### Adjust range of clusters tried here:
     ks = range(1,10)
     Wks = np.zeros(len(ks))
     Wkbs = np.zeros(len(ks))
     sk = np.zeros(len(ks))
-    for indk, k in enumerate(ks):
-        mu, clusters = find_centers(X,k)
-        Wks[indk] = np.log(Wk(mu, clusters))
-        # Create B reference datasets
-        B = 10
-        BWkbs = np.zeros(B)
-        for i in range(B):
-            xfeedformulti=[X for i in range(len(X))]
-            if __name__ == '__main__':    
-                p = Pool(7)
-                Xb = p.map(Xbb,xfeedformulti)
-                p.close()
-                p.terminate()
-                p.join()
-            #Xb = [[random.uniform(xmin[j],xmax[j]) for j in range(60)] for n in range(len(X))]
-            #for n in range(len(X)):
-            #    Xb.append([random.uniform(xmin[j],xmax[j]) for j in range(60)])
-            Xb = np.array(Xb)
-            mu, clusters = find_centers(Xb,k)
-            BWkbs[i] = np.log(Wk(mu, clusters))
-        Wkbs[indk] = sum(BWkbs)/B
-        sk[indk] = np.sqrt(sum((BWkbs-Wkbs[indk])**2)/B)
-    sk = sk*np.sqrt(1+1/B)
-    return(ks, Wks, Wkbs, sk)
-
-def optimalK(data):
-    ks, logWks, logWkbs, sk = gap_statistic(data)
-    gs = logWkbs - logWks
+    gs = np.zeros(len(ks))
+    
+    if __name__ == '__main__':    
+        p = Pool(10)
+        gapstat = p.map(gap_statistic,ks)
+        for indk,k in enumerate(ks):
+            gs[indk] = gapstat[indk][0]
+            sk[indk] = gapstat[indk][1]
+        p.close()
+        p.terminate()
+        p.join()
+        
+    # deleting the temporary data file.
+    os.remove('tempdata.npy')
     return min([k for k in range(1,len(ks)-1) if gs[k]-(gs[k+1]-sk[k+1]) >= 0])
 
 print optimalK(data)
