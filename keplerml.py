@@ -31,8 +31,22 @@ from multiprocessing import Pool
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import RadioButtons
 
-filelist=str(raw_input('Enter name of file list: '))
-identifier=str(raw_input('Enter a unique identifier: '))
+if sys.version_info[0] < 3:
+    from Tkinter import Tk
+else:
+    from tkinter import Tk
+
+from tkFileDialog import askopenfilename
+
+print('Select the filelist')
+Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
+filelist = askopenfilename() # show an "Open" dialog box and return the path to the selected file
+
+print('Select the fits files location (must all be in one directory)')
+Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
+fitsDir = askopenfilename() # show an "Open" dialog box and return the path to the selected file
+
+identifier=str(raw_input('Choose a unique identifier: '))
 
 listoffeatures = ['longtermtrend', 'meanmedrat', 'skews', 'varss', 'coeffvar', 'stds', 'numoutliers', 'numnegoutliers', 'numposoutliers', 'numout1s', 'kurt', 'mad', 'maxslope', 'minslope', 'meanpslope', 'meannslope', 'g_asymm', 'rough_g_asymm', 'diff_asymm', 'skewslope', 'varabsslope', 'varslope', 'meanabsslope', 'absmeansecder', 'num_pspikes', 'num_nspikes', 'num_psdspikes', 'num_nsdspikes','stdratio', 'pstrend', 'num_zcross', 'num_pm', 'len_nmax', 'len_nmin', 'mautocorrcoef', 'ptpslopes', 'periodicity', 'periodicityr', 'naiveperiod', 'maxvars', 'maxvarsr', 'oeratio', 'amp', 'normamp','mbp', 'mid20', 'mid35', 'mid50', 'mid65', 'mid80', 'percentamp', 'magratio', 'sautocorrcoef', 'autocorrcoef', 'flatmean', 'tflatmean', 'roundmean', 'troundmean', 'roundrat', 'flatrat']
 
@@ -357,166 +371,32 @@ def fcalc(nfile):
     return longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat
 
 def feature_calc(filelist):
-
-    files = [line.strip() for line in open(filelist)]
-
-    # Create the appropriate arrays for the features. Length of array determined by number of files.
-
-    numlcs = len(files)
-    longtermtrend=np.zeros(numlcs)
-    meanmedrat=np.zeros(numlcs)
-    skews=np.zeros(numlcs)
-    varss=np.zeros(numlcs)
-    coeffvar =np.zeros(numlcs)
-    stds =np.zeros(numlcs)
-    numoutliers =np.zeros(numlcs)
-    numnegoutliers =np.zeros(numlcs)
-    numposoutliers =np.zeros(numlcs)
-    numout1s =np.zeros(numlcs)
-    kurt =np.zeros(numlcs)
-    mad =np.zeros(numlcs)
-    maxslope =np.zeros(numlcs)
-    minslope =np.zeros(numlcs)
-    meanpslope =np.zeros(numlcs)
-    meannslope =np.zeros(numlcs)
-    g_asymm=np.zeros(numlcs)
-    rough_g_asymm =np.zeros(numlcs)
-    diff_asymm =np.zeros(numlcs)
-    skewslope =np.zeros(numlcs)
-    varabsslope =np.zeros(numlcs)
-    varslope =np.zeros(numlcs)
-    meanabsslope =np.zeros(numlcs)
-    absmeansecder =np.zeros(numlcs)
-    num_pspikes=np.zeros(numlcs)
-    num_nspikes =np.zeros(numlcs)
-    num_psdspikes =np.zeros(numlcs)
-    num_nsdspikes=np.zeros(numlcs)
-    stdratio =np.zeros(numlcs)
-    pstrend =np.zeros(numlcs)
-    num_zcross =np.zeros(numlcs)
-    num_pm =np.zeros(numlcs)
-    len_nmax =np.zeros(numlcs)
-    len_nmin =np.zeros(numlcs)
-    mautocorrcoef =np.zeros(numlcs)
-    ptpslopes =np.zeros(numlcs)
-    periodicity =np.zeros(numlcs)
-    periodicityr =np.zeros(numlcs)
-    naiveperiod =np.zeros(numlcs)
-    maxvars =np.zeros(numlcs)
-    maxvarsr =np.zeros(numlcs)
-    oeratio =np.zeros(numlcs)
-    amp = np.zeros(numlcs)
-    normamp=np.zeros(numlcs)
-    mbp =np.zeros(numlcs)
-    mid20 =np.zeros(numlcs)
-    mid35 =np.zeros(numlcs)
-    mid50 =np.zeros(numlcs)
-    mid65 =np.zeros(numlcs)
-    mid80 =np.zeros(numlcs)
-    percentamp =np.zeros(numlcs)
-    magratio=np.zeros(numlcs)
-    sautocorrcoef =np.zeros(numlcs)
-    autocorrcoef =np.zeros(numlcs)
-    flatmean =np.zeros(numlcs)
-    tflatmean =np.zeros(numlcs)
-    roundmean =np.zeros(numlcs)
-    troundmean =np.zeros(numlcs)
-    roundrat =np.zeros(numlcs)
-    flatrat=np.zeros(numlcs)
+    
+    files = [fitsDir+line.strip() for line in open(filelist)]
     
     # The following runs the program for the list of files in parallel. The number in Pool() should be the number
     # of processors available on the machine's cpu (or 1 less to let the machine keep doing other processes)
-    if __name__ == '__main__':    
-        p = Pool(6)
-        wholecalc = p.map(fcalc,files)
-        for i in range(numlcs):
-            longtermtrend[i]=wholecalc[i][0]
-            meanmedrat[i]=wholecalc[i][1]
-            skews[i]=wholecalc[i][2]
-            varss[i]=wholecalc[i][3]
-            coeffvar[i]=wholecalc[i][4]
-            stds[i]=wholecalc[i][5]
-            numoutliers[i]=wholecalc[i][6]
-            numnegoutliers[i]=wholecalc[i][7]
-            numposoutliers[i]=wholecalc[i][8]
-            numout1s[i]=wholecalc[i][9] 
-            kurt[i]=wholecalc[i][10]
-            mad[i]=wholecalc[i][11]
-            maxslope[i]=wholecalc[i][12]
-            minslope[i]=wholecalc[i][13]
-            meanpslope[i]=wholecalc[i][14]
-            meannslope[i]=wholecalc[i][15]
-            g_asymm[i]=wholecalc[i][16]
-            rough_g_asymm[i]=wholecalc[i][17]
-            diff_asymm[i]=wholecalc[i][18]
-            skewslope[i]=wholecalc[i][19]
-            varabsslope[i]=wholecalc[i][20]
-            varslope[i]=wholecalc[i][21]
-            meanabsslope[i]=wholecalc[i][22]
-            absmeansecder[i]=wholecalc[i][23]
-            num_pspikes[i]=wholecalc[i][24]
-            num_nspikes[i]=wholecalc[i][25]
-            num_psdspikes[i]=wholecalc[i][26]
-            num_nsdspikes[i]=wholecalc[i][27]
-            stdratio[i]=wholecalc[i][28]
-            pstrend[i]=wholecalc[i][29]
-            num_zcross[i]=wholecalc[i][30]
-            num_pm[i]=wholecalc[i][31]
-            len_nmax[i]=wholecalc[i][32]
-            len_nmin[i]=wholecalc[i][33]
-            mautocorrcoef[i]=wholecalc[i][34]
-            ptpslopes[i]=wholecalc[i][35]
-            periodicity[i]=wholecalc[i][36]
-            periodicityr[i]=wholecalc[i][37]
-            naiveperiod[i]=wholecalc[i][38]
-            maxvars[i]=wholecalc[i][39]
-            maxvarsr[i]=wholecalc[i][40]
-            oeratio[i]=wholecalc[i][41]
-            amp[i]=wholecalc[i][42]
-            normamp[i]=wholecalc[i][43]
-            mbp[i]=wholecalc[i][44]
-            mid20[i]=wholecalc[i][45]
-            mid35[i]=wholecalc[i][46]
-            mid50[i]=wholecalc[i][47]
-            mid65[i]=wholecalc[i][48]
-            mid80[i]=wholecalc[i][49]
-            percentamp[i]=wholecalc[i][50]
-            magratio[i]=wholecalc[i][51]
-            sautocorrcoef[i]=wholecalc[i][52]
-            autocorrcoef[i]=wholecalc[i][53]
-            flatmean[i]=wholecalc[i][54]
-            tflatmean[i]=wholecalc[i][55]
-            roundmean[i]=wholecalc[i][56]
-            troundmean[i]=wholecalc[i][57]
-            roundrat[i]=wholecalc[i][58]
-            flatrat[i]=wholecalc[i][59]
+    if __name__ == '__main__':
+        numcpus = multprocessing.cpu_count()
+        if numcpus > 1:
+            # Leave 1 cpu open for system tasks.
+            usecpus = numcpus-1
+        else:
+            usecpus = 1
+            
+        p = Pool(usecpus)
+        data = p.map(fcalc,files)
         p.close()
         p.terminate()
         p.join()
-    
-    final_features = np.vstack((longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat))
-    ffeatures = [longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat]
-    # In order to get all this in the right format for the machine learning we need to set it up as an array where each
-    # index is an array of all the features.
-    # Data = [ [f1(1),f2(1),f3(1),...,f60(1) ] , [f1(2),f2(2),f3(2),...,f60(2)], ... , [f1(n),...,f60(n)] ]
-    data = []
-    for i in range(numlcs):
-        data.append([])
-        for j in range(60):
-            data[i].append(final_features[j][i])
 
-    return data,final_features,ffeatures
-
-#final list of features - look up vstack and/or append to consolidate these 
+    return data
 
 #things that are apparently broken:
 #numoutliers   Dan: Seems to be fine, just looks like the sample file has nothing outside 4 sigma?
 
 # 'data' contains the output as arrays of all the features for each lightcurve, necessary for clustering
-# 'final_features' contains the output as Revant originally had it
-# 'ffeatures' contains the output as arrays of all data points for each feature, useful for plotting
-data,final_features,ffeatures = feature_calc(filelist)
+data = feature_calc(filelist)
 
 # This will save the calculated features as numpy arrays in a .npy file, which can be imported via np.load(file)
 np.save(identifier+'dataByLightCurve',data)
-np.save(identifier+'dataByFeature',ffeatures)
