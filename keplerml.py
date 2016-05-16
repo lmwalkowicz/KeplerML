@@ -27,16 +27,16 @@ import commands
 # import utils
 import itertools
 #from astropy.io import fits
-from multiprocessing import Pool
+from multiprocessing import Pool,cpu_count
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import RadioButtons
-
+import sys
 if sys.version_info[0] < 3:
     from Tkinter import Tk
 else:
     from tkinter import Tk
 
-from tkFileDialog import askopenfilename
+from tkFileDialog import askopenfilename,askdirectory
 
 print('Select the filelist')
 Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
@@ -44,7 +44,7 @@ filelist = askopenfilename() # show an "Open" dialog box and return the path to 
 
 print('Select the fits files location (must all be in one directory)')
 Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
-fitsDir = askopenfilename() # show an "Open" dialog box and return the path to the selected file
+fitsDir = askdirectory() # show an "Open" dialog box and return the path to the selected file
 
 identifier=str(raw_input('Choose a unique identifier: '))
 
@@ -372,12 +372,12 @@ def fcalc(nfile):
 
 def feature_calc(filelist):
     
-    files = [fitsDir+line.strip() for line in open(filelist)]
+    files = [fitsDir+'/'+line.strip() for line in open(filelist)]
     
     # The following runs the program for the list of files in parallel. The number in Pool() should be the number
     # of processors available on the machine's cpu (or 1 less to let the machine keep doing other processes)
     if __name__ == '__main__':
-        numcpus = multprocessing.cpu_count()
+        numcpus = cpu_count()
         if numcpus > 1:
             # Leave 1 cpu open for system tasks.
             usecpus = numcpus-1
