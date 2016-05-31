@@ -62,12 +62,13 @@ def read_kepler_curve(file):
     t = lc.field('TIME')
     f = lc.field('PDCSAP_FLUX')
     err = lc.field('PDCSAP_FLUX_ERR')
-    nf = f / np.median(f)
- 
-    nf = nf[np.isfinite(t)]
+    
+    f = f[np.isfinite(t)]
     t = t[np.isfinite(t)]
-    t = t[np.isfinite(nf)]
-    nf = nf[np.isfinite(nf)]
+    t = t[np.isfinite(f)]
+    f = f[np.isfinite(f)]
+    
+    nf = f / np.median(f)
 
     return t, nf, err
 
