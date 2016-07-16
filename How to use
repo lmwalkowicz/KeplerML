@@ -1,0 +1,36 @@
+How to use this repository:
+
+Prerequisites
+i. Collect lightcurves into a single directory.
+ii. Generate a filelist of the contents of that directory (the lightcurves)
+    Command:
+    for f in *llc.fits; do echo $f >> filelist; done
+
+If you have calculated features already and they are contained in a .npy file with the right naming convention, skip to step 2.
+1. Run keplerml.py to calculate the lightcurve features, this will output a numpy array with the calculated features for each lightcurve.
+    Command:
+    python keplerml.py
+    Choose (or type depending on version of keplerml.py) the path to the directory containing the lightcurves, and the file list.
+    Choose a unique identifier for the numpy array, this will be appended to the front of the .npy file.
+2. Open ClusterWorkbook.ipynb with ipython notebook.
+    Command:
+    ipython notebook
+    Navigate to ClusterWorkbook
+3a. (optional) Determine optimal k for k-means clustering with optimalK.py. This is time consuming and should only be run once per dataset, it outputs to the terminal and does not produce any output files.
+    User Input:
+    Type the unique identifier of the .npy file
+    
+3b. Generate k-means clusters with the first module (shift-enter), this generates filelists and numpy arrays for clusters and their outliers. This will all be output to the directory 'clusterOutput', clusters are identified by c# for output files.
+    User Input:
+    Type the unique identifier of the .npy file you're interested in clustering.
+    Input the number of clusters expected (see step 3a for an optimal calculation) 
+4. Use 2nd module to plot a 3D scatter of the data, you may choose either k-means or DBSCAN clustering methods, DBSCAN is clustered in module and requires no preclustering.
+    User Input:
+    Type DBSCAN or kmeans to choose the clustering method (there aren't a lot of allowed typing variations)
+    For K-means - Type the identifier for the cluster of interest (should be 'c#')
+    
+    Click points on the scatter plot to show the lightcurves in the plot below
+    Change the axes to view different features in the scatter plot
+    
+    IMPORTANT: Click 'quit' button to terminate the module properly.
+    
