@@ -1,5 +1,7 @@
 # L.M. Walkowicz
 # Rewrite of Revant's feature calculations, plus additional functions for vetting outliers
+from datetime import datetime
+startTime = datetime.now()
 
 import random
 import numpy as np
@@ -401,3 +403,5 @@ data = feature_calc(filelist)
 
 # This will save the calculated features as numpy arrays in a .npy file, which can be imported via np.load(file)
 np.save(identifier+'dataByLightCurve',data)
+
+print datetime.now()-startTime
