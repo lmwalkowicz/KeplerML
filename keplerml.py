@@ -1,8 +1,8 @@
-# L.M. Walkowicz
-# Rewrite of Revant's feature calculations, plus additional functions for vetting outliers
-from datetime import datetime
+from datetime import datetime,timedelta
 startTime = datetime.now()
-
+# L.M. Walkowicz, D.K. Giles
+# Rewrite of Revant's feature calculations, plus additional functions for vetting outliers
+import os
 import random
 import numpy as np
 np.set_printoptions(threshold='nan')
@@ -10,8 +10,8 @@ import scipy as sp
 from scipy import stats
 import pyfits
 import math
-import pylab as pl
-import matplotlib.pyplot as plt
+#import pylab as pl
+#import matplotlib.pyplot as plt
 import heapq
 from operator import xor
 import scipy.signal
@@ -20,18 +20,17 @@ from numpy import float64
 #import astroML_addons.periodogram
 #import cython
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-from sklearn.cluster import DBSCAN,Ward
+#from sklearn.cluster import KMeans
+#from sklearn.cluster import DBSCAN,Ward
 from numpy.random import RandomState
 #rng = RandomState(42)
 import itertools
 import commands
 # import utils
-import itertools
 #from astropy.io import fits
 from multiprocessing import Pool,cpu_count
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.widgets import RadioButtons
+#from mpl_toolkits.mplot3d import Axes3D
+#from matplotlib.widgets import RadioButtons
 import sys
 if sys.version_info[0] < 3:
     from Tkinter import Tk
@@ -74,6 +73,7 @@ def read_kepler_curve(file):
 
     return t, nf, err
 
+"""
 def plot_kepler_curve(t, nf):
     fig, ax = plt.subplots(figsize=(5, 3.75))
     ax.set_xlim(t.min(), t.max())
@@ -83,9 +83,10 @@ def plot_kepler_curve(t, nf):
     plt.plot(t, nf, 'o',markeredgecolor='none', color='blue', alpha=0.2)
     plt.plot(t, nf, '-',markeredgecolor='none', color='blue', alpha=1.0)
     plt.show()
+"""
 
 def calc_outliers_pts(t, nf):
-    # Is t really a necessary input? The answer is no, but eh, why change it
+    # Is t really a necessary input? The answer is no, but eh
     posthreshold = np.mean(nf)+4*np.std(nf)
     negthreshold = np.mean(nf)-4*np.std(nf)
     
@@ -113,7 +114,7 @@ def calc_slopes(t, nf, corrnf):
     meanslope = np.mean(slopes)
     # by looking at where the 99th percentile is instead of just the largest number,
     # I think it avoids the extremes which might not be relevant (might be unreliable data)
-    # Is the miniumum slope the most negative one, or the flattest one? Most negative
+    # Is the miniumum slope the most negative one, or the flattest one? Answer: Most negative
     maxslope=np.percentile(slopes,99)
     minslope=np.percentile(slopes,1)
     # Separating positive slopes and negative slopes
@@ -178,10 +179,10 @@ def calc_maxmin_periodics(t, nf, err):
     naivemax,nmax_times = [],[]
     naivemins = []
     for j in range(len(nf)):
-        if nf[j] == max(nf[max(j-10,0):min(j+10,len(nf-1))]):
+        if nf[j] == max(nf[max(j-10,0):min(j+10,len(nf)-1)]):
             naivemax.append(nf[j])
             nmax_times.append(t[j])
-        elif nf[j] == min(nf[max(j-10,0):min(j+10,len(nf-1))]):
+        elif nf[j] == min(nf[max(j-10,0):min(j+10,len(nf)-1)]):
             naivemins.append(nf[j])
     len_nmax=len(naivemax) #F33
     len_nmin=len(naivemins) #F34
@@ -250,8 +251,9 @@ def lc_examine(filelist, style='-'):
     return
 
 def fcalc(nfile):
-    # Keeping track of progress, noting every thousand files completed.
-
+    
+    fileStartTime = datetime.now()
+    
     t,nf,err = read_kepler_curve(nfile)
 
     # t = time
@@ -370,38 +372,83 @@ def fcalc(nfile):
     roundrat = roundmean / troundmean #F59
 
     flatrat = flatmean / tflatmean #F60
+    
+    # Log any files that take an abnormally long time. Average filetime should be around 1.3 seconds, looking at the ones that exceed 10x that time (so everything past 13 seconds).
+    filetime = datetime.now()-fileStartTime
+    
+    if filetime>timedelta(seconds=13):
+        kml_log = identifier+'_kml_log'
+        os.system('echo %s ... %s >> %s'%(nfile,filetime,kml_log))
 
-    return longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat
+    """
+    The output can be too large to buffer in the memory while everything is running, so my solution is to write all the data as it's processed, then go through and sort it afterwards. I'm sure there's a more elegant way to do it, but I don't know that way so this is what it is...
+
+    This takes about 3-4 times longer, but the data output is more controlled and if it fails in the middle there's still data that can be retrieved (read: doesn't need to be reprocessed and should be removed from the filelist).
+    """
+    
+    ndatastr ='%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s'%(longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat)
+
+    nfile=nfile.replace(fitsDir,"")
+    os.system('echo %s, %s>>%s'%(nfile,ndatastr,identifier+'_output'))
+    
+    #return longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat
 
 def feature_calc(filelist):
-    
+    print("Importing filelist...")
     files = [fitsDir+'/'+line.strip() for line in open(filelist)]
     
     # The following runs the program for the list of files in parallel. The number in Pool() should be the number
     # of processors available on the machine's cpu (or 1 less to let the machine keep doing other processes)
+    print("")
+    print("Calculating features...")
     if __name__ == '__main__':
         numcpus = cpu_count()
         if numcpus > 1:
-            # Leave 1 cpu open for system tasks.
-            usecpus = numcpus-1
+            # Leave 2 cpus open for system tasks.
+            usecpus = numcpus-2
         else:
             usecpus = 1
             
         p = Pool(usecpus)
-        data = p.map(fcalc,files)
+        #data = p.map(fcalc,files)
+        p.map(fcalc,files)
         p.close()
         p.terminate()
         p.join()
-
-    return data
+    print("Features Calculated")
+    #return data
 
 #things that are apparently broken:
 #numoutliers   Dan: Seems to be fine, just looks like the sample file has nothing outside 4 sigma?
 
 # 'data' contains the output as arrays of all the features for each lightcurve, necessary for clustering
-data = feature_calc(filelist)
+#data = feature_calc(filelist)
+feature_calc(filelist)
+
+"""
+Janky sorting to arrange all the data and save as a sorted numpy array (hopefully doable, if not, this can be modified pretty easily). 
+"""
+print("Sorting...")
+outputfile = identifier+'_output'
+outputfilesorted = identifier+'_output_sorted'
+outputdata = [line.strip() for line in open(outputfile)]
+outputdata.sort()
+              
+f = open(outputfilesorted,'w')
+              
+for line in outputdata:
+    f.write(line[39:]+'\n')
+f.close()
+print("Saving as numpy array...")              
+npdata = np.loadtxt(outputfilesorted,delimiter=',')
+np.save(identifier+'dataByLightCurveTEST',npdata)
 
 # This will save the calculated features as numpy arrays in a .npy file, which can be imported via np.load(file)
-np.save(identifier+'dataByLightCurve',data)
+#np.save(identifier+'dataByLightCurve',data)
 
-print datetime.now()-startTime
+kml_log = open(identifier+'_kml_log','w')
+
+totalTime = datetime.now()-startTime
+kml_log.write(str(totalTime))
+kml_log.close()
+print("Done")
