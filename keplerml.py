@@ -39,16 +39,6 @@ else:
 
 from tkFileDialog import askopenfilename,askdirectory
 
-print('Select the filelist')
-Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
-filelist = askopenfilename() # show an "Open" dialog box and return the path to the selected file
-
-print('Select the fits files location (must all be in one directory)')
-Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
-fitsDir = askdirectory() # show an "Open" dialog box and return the path to the selected file
-
-identifier=str(raw_input('Choose a unique identifier: '))
-
 listoffeatures = ['longtermtrend', 'meanmedrat', 'skews', 'varss', 'coeffvar', 'stds', 'numoutliers', 'numnegoutliers', 'numposoutliers', 'numout1s', 'kurt', 'mad', 'maxslope', 'minslope', 'meanpslope', 'meannslope', 'g_asymm', 'rough_g_asymm', 'diff_asymm', 'skewslope', 'varabsslope', 'varslope', 'meanabsslope', 'absmeansecder', 'num_pspikes', 'num_nspikes', 'num_psdspikes', 'num_nsdspikes','stdratio', 'pstrend', 'num_zcross', 'num_pm', 'len_nmax', 'len_nmin', 'mautocorrcoef', 'ptpslopes', 'periodicity', 'periodicityr', 'naiveperiod', 'maxvars', 'maxvarsr', 'oeratio', 'amp', 'normamp','mbp', 'mid20', 'mid35', 'mid50', 'mid65', 'mid80', 'percentamp', 'magratio', 'sautocorrcoef', 'autocorrcoef', 'flatmean', 'tflatmean', 'roundmean', 'troundmean', 'roundrat', 'flatrat']
 
 def read_revant_pars(parfile):
@@ -84,6 +74,56 @@ def plot_kepler_curve(t, nf):
     plt.plot(t, nf, '-',markeredgecolor='none', color='blue', alpha=1.0)
     plt.show()
 """
+
+def save_output(identifier,fitsDir,filelist):
+    """
+    Janky sorting to arrange all the data and save as a sorted numpy array (hopefully doable, if not, this can be modified pretty easily). 
+    """
+    files=[fitsDir+'/'+line.strip() for line in open(filelist)]
+    print("Sorting...")
+    # output file was created/added to in the main part of the code.
+    outputfile = identifier+'_output'
+    outputfilesorted = identifier+'_output_sorted'
+    outputdata = [line.strip() for line in open(outputfile)]
+    outputdata.sort()
+
+    # Create a filelist of successfully processed files for filekeeping's sake
+    # Output data of processed files to a file to be converted into a numpy array
+    f = open(outputfilesorted,'w')
+    skip=len(files[0])+2
+    filelist_completed=identifier+'_filelist_completed'
+    fl = open(filelist_completed,'w')
+    for line in outputdata:
+        # Write the data without the filepath
+        f.write(line[skip:]+'\n')
+        # Write the completed filelist w/o full filepath, just fits file id
+        fl.write(line[len(fitsDir):skip-2]+'\n')
+    f.close()
+    fl.close()
+    
+    ### Primarily for a failed run ###
+    # Remove successfully processed files from filelist so they don't need to be reprocessed.
+    for line in outputdata:
+        if line in files:files.remove(line)
+    fl_update=open(filelist,'w')
+    for line in files:
+        fl_update.write(line+'\n')
+    fl_update.close()
+
+
+    # Save the output data as a numpy array
+    print("Saving as numpy array...")              
+    npdata = np.loadtxt(outputfilesorted,delimiter=',')
+    np.save(identifier+'dataByLightCurve',npdata)
+
+    # This will save the calculated features as numpy arrays in a .npy file, which can be imported via np.load(file)
+    #np.save(identifier+'dataByLightCurve',data)
+
+    kml_log = identifier+'_kml_log'
+
+    totalTime = datetime.now()-startTime
+    os.system('echo %s>> %s'%(totalTime,kml_log))
+    return
 
 def calc_outliers_pts(t, nf):
     # Is t really a necessary input? The answer is no, but eh
@@ -418,37 +458,26 @@ def feature_calc(filelist):
     print("Features Calculated")
     #return data
 
-#things that are apparently broken:
-#numoutliers   Dan: Seems to be fine, just looks like the sample file has nothing outside 4 sigma?
-
 # 'data' contains the output as arrays of all the features for each lightcurve, necessary for clustering
 #data = feature_calc(filelist)
+
+
+"""
+Run the program on the filelist chosen.
+"""
+
+print('Select the filelist')
+Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
+filelist = askopenfilename() # show an "Open" dialog box and return the path to the selected file
+if filelist:
+    print('Select the fits files location (must all be in one directory)')
+    Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
+    fitsDir = askdirectory() # show an "Open" dialog box and return the path to the selected file
+
+identifier=str(raw_input('Choose a unique identifier: '))
+
 feature_calc(filelist)
 
-"""
-Janky sorting to arrange all the data and save as a sorted numpy array (hopefully doable, if not, this can be modified pretty easily). 
-"""
-print("Sorting...")
-outputfile = identifier+'_output'
-outputfilesorted = identifier+'_output_sorted'
-outputdata = [line.strip() for line in open(outputfile)]
-outputdata.sort()
-              
-f = open(outputfilesorted,'w')
-              
-for line in outputdata:
-    f.write(line[39:]+'\n')
-f.close()
-print("Saving as numpy array...")              
-npdata = np.loadtxt(outputfilesorted,delimiter=',')
-np.save(identifier+'dataByLightCurveTEST',npdata)
+save_output(identifier,fitsDir,filelist)
 
-# This will save the calculated features as numpy arrays in a .npy file, which can be imported via np.load(file)
-#np.save(identifier+'dataByLightCurve',data)
-
-kml_log = open(identifier+'_kml_log','w')
-
-totalTime = datetime.now()-startTime
-kml_log.write(str(totalTime))
-kml_log.close()
 print("Done")
