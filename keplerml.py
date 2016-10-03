@@ -1,5 +1,5 @@
 from datetime import datetime,timedelta
-startTime = datetime.now()
+
 # L.M. Walkowicz, D.K. Giles
 # Rewrite of Revant's feature calculations, plus additional functions for vetting outliers
 import os
@@ -79,8 +79,12 @@ def plot_kepler_curve(t, nf):
 def save_output(identifier,fitsDir,filelist):
     """
     Janky sorting to arrange all the data and save as a sorted numpy array (hopefully doable, if not, this can be modified pretty easily). 
+    
+    In the event of a crash, this method should be run as a separate module and given the identifier, fitsDir, and filelist
+    to remove the successfully processed files from the filelist.
     """
     files=[fitsDir+'/'+line.strip() for line in open(filelist)]
+
     print("Sorting output...")
     # output file was created/added to in the main part of the code.
     # outputfile = identifier+'_output'
@@ -106,8 +110,12 @@ def save_output(identifier,fitsDir,filelist):
     # Save the output data as a numpy array
     print("Saving as numpy array...")              
     npdata = np.array(data_array)
-    np.save(identifier+'dataByLightCurve',npdata)
+    if os.path.isfile(identifier+'_dataByLightCurve.npy'):
+        os.system("rm %s"%(identifier+'_dataByLightCurve.npy'))
 
+    np.save(identifier+'_dataByLightCurve',npdata)
+    print("Data for %s saved in numpy array %s"%(len(npdata),identifier+'_dataByLightCurve.npy'))
+    
     # This will save the calculated features as numpy arrays in a .npy file, which can be imported via np.load(file)
     
     # Create a filelist of successfully processed files for filekeeping's sake
@@ -425,11 +433,11 @@ def fcalc(nfile):
         flatrat = flatmean / tflatmean #F60
 
         # Log any files that take an abnormally long time. Average filetime should be around 1.3 seconds, looking at the ones that exceed 10x that time (so everything past 13 seconds).
+        kml_log = open(identifier+'_kml_log','a')
         filetime = datetime.now()-fileStartTime
-
         if filetime>timedelta(seconds=13):
-            kml_log = identifier+'_kml_log'
-            os.system('echo %s ... %s >> %s'%(nfile,filetime,kml_log))
+            kml_log.write('%s ... %s/n'%(nfile.replace(fitsDir+'/',""),filetime))
+        kml_log.close()
 
         """
         The output can be too large to buffer in the memory while everything is running, so my solution is to write all the data as it's processed, then go through and sort it afterwards. I'm sure there's a more elegant way to do it, but I don't know that way so this is what it is...
@@ -445,8 +453,10 @@ def fcalc(nfile):
         id_output.close()
 
         #return longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat
+    
     except TypeError:
-        return
+        kml_log = identifier+'_kml_log'
+        os.system('echo %s ... TYPE ERROR >> %s'%(nfile.replace(fitsDir+'/',""),kml_log))
 
 def feature_calc(filelist):
     print("Importing filelist...")
@@ -492,13 +502,15 @@ if filelist:
         identifier=str(raw_input('Choose a unique identifier: '))
         outputfile = identifier+'_output'
         while os.path.isfile(outputfile):
-            replace = raw_input('Output exists for identifier, replace? (y/n) ')
+            replace = raw_input('Output exists for identifier, replace? ("y" to replace, any other input repeats the prompt) ')
             if replace == 'y':
                 os.system('rm %s'%outputfile)
+            elif replace == 'add':
+                break
             else:
                 identifier=str(raw_input('Choose a unique identifier: '))
                 outputfile = identifier+'_output'
-        
+        startTime = datetime.now()
         feature_calc(filelist)
         kml_log = identifier+'_kml_log'
         totalTime = datetime.now()-startTime
