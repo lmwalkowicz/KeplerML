@@ -103,9 +103,15 @@ def save_output(identifier,fitsDir,filelist):
     # to an array or to a numpy array before sorting.
     outputdata.sort()
     
+    id_output=open(identifier+'_output','r+')
+    pickle.dump(outputdata,id_output)
+    id_output.close()
+    
     # Separate the name of the file from the data
     files_array = [outputdata[i][0] for i in range(len(outputdata))]
     data_array = [outputdata[i][1:] for i in range(len(outputdata))]
+    
+    
     
     # Save the output data as a numpy array
     print("Saving as numpy array...")              

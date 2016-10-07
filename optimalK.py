@@ -28,11 +28,14 @@ import itertools
 from multiprocessing import Pool
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import RadioButtons
+import sys
+import cPickle as pickle
+if sys.version_info[0] < 3:
+    from Tkinter import Tk
+else:
+    from tkinter import Tk
 
-identifier = raw_input('Enter the identifier of the data: ')
-
-dataID = str(identifier)+'dataByLightCurve.npy'
-data = np.load(dataID)
+from tkFileDialog import askopenfilename,askdirectory
 
 def cluster_points(X, mu):
     clusters  = {}
@@ -86,14 +89,20 @@ def bounding_box(X):
         
     return (xmin,xmax)
 
+def montecarlogauss(n):
+    xmin = np.load('xmin.npy')
+    xmax = np.load('xmax.npy')
+    Xbn = [random.uniform(xmin[j],xmax[j]) for j in range(60)]
+    return Xbn
+        
 def gap_statistic(k):
     X = np.load('tempdata.npy')
     (xmin,xmax) = bounding_box(X)
-    """
+    
     # temporary npy files for multiprocessing
     np.save('xmin',xmin)
     np.save('xmax',xmax)
-    """
+    
     mu, clusters = find_centers(X,k)
     Wks = np.log(Wk(mu, clusters))
     # Create B reference datasets
@@ -103,14 +112,6 @@ def gap_statistic(k):
         # create random distribution of n points in the bounding hypercube, this is time consuming
         # with hundreds of thousands of points. Multiprocessing solution? see comments in section, might work
         Xb = []
-        """
-        The following may be a way to reduce runtime by implementing multiprocessing to generate these reference datasets.
-        
-        def montecarlogauss(n):
-            xmin = np.load('xmin.npy')
-            xmax = np.load('xmax.npy')
-            Xbn = random.uniform(xmin[j],xmax[j])for j in range(60))
-            return Xbn
             
         numcpus = cpu_count()
         if numcpus > 1:
@@ -127,13 +128,14 @@ def gap_statistic(k):
         """
         for n in range(len(X)):
             Xb.append([random.uniform(xmin[j],xmax[j]) for j in range(60)])
+        """
         Xb = np.array(Xb)
         mu, clusters = find_centers(Xb,k)
         BWkbs[i] = np.log(Wk(mu, clusters))
-    """
+    
     os.remove('xmin.npy')
     os.remove('xmax.npy')
-    """
+    
     Wkbs = sum(BWkbs)/B
     sk = np.sqrt(sum((BWkbs-Wkbs)**2)/B)*np.sqrt(1+1/B)
     gs = Wkbs - Wks
@@ -151,7 +153,12 @@ def optimalK(X):
     Wkbs = np.zeros(len(ks))
     sk = np.zeros(len(ks))
     gs = np.zeros(len(ks))
-    
+    for k in ks:
+        gapstat = gap_statistic(k)
+    for indk,k in enumerate(ks):
+        gs[indk] = gapstat[indk][0]
+        sk[indk] = gapstat[indk][1]   
+    """
     if __name__ == '__main__':    
         # probably not the best way to make this run faster... but it makes it 10x faster for now
         p = Pool(10)
@@ -162,9 +169,26 @@ def optimalK(X):
         p.close()
         p.terminate()
         p.join()
-        
+    """        
     # deleting the temporary data file.
     os.remove('tempdata.npy')
     return min([k for k in range(1,len(ks)-1) if gs[k]-(gs[k+1]-sk[k+1]) >= 0])
 
-print optimalK(data)
+Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
+output = askopenfilename()
+
+if output:
+    outputfile = open(output,'r+') # show an "Open" dialog box and return the path to the selected file
+    outputdata = []
+    while True:
+        try:
+            o = pickle.load(outputfile)
+        except EOFError:
+            break
+        else:
+            outputdata.append(o)
+    outputfile.close()
+
+    files = [outputdata[i][0] for i in range(len(outputdata))]
+    data = np.array([outputdata[i][1:] for i in range(len(outputdata))])
+    print optimalK(data)
