@@ -33,6 +33,7 @@ from multiprocessing import Pool,cpu_count
 #from matplotlib.widgets import RadioButtons
 import sys
 import cPickle as pickle
+from numbapro import cuda
 if sys.version_info[0] < 3:
     from Tkinter import Tk
 else:
@@ -40,27 +41,7 @@ else:
 
 from tkFileDialog import askopenfilename,askdirectory
 
-def read_revant_pars(parfile):
-    pars = [line.strip() for line in open(parfile)]
-    pararr = np.zeros((len(pars), 60))
-    for i in range(len(pars)):
-        pararr[i] = np.fromstring(pars[i], dtype=float, sep=' ')
-    return pararr
 
-def read_kepler_curve(file):
-    lc = pyfits.getdata(file)
-    t = lc.field('TIME')
-    f = lc.field('PDCSAP_FLUX')
-    err = lc.field('PDCSAP_FLUX_ERR')
-    
-    f = f[np.isfinite(t)]
-    t = t[np.isfinite(t)]
-    t = t[np.isfinite(f)]
-    f = f[np.isfinite(f)]
-    
-    nf = f / np.median(f)
-
-    return t, nf, err
 
 """
 def plot_kepler_curve(t, nf):
@@ -87,46 +68,21 @@ def save_output(identifier,fitsDir,filelist):
     # output file was created/added to in the main part of the code.
     # outputfile = identifier+'_output'
     outputfile = open(identifier+'_output','r+')
-    outputdata = []
-    while True:
-        try:
-            o = pickle.load(outputfile)
-        except EOFError:
-            break
-        else:
-            outputdata.append(o)
-    outputfile.close()
-
-    # As unpickled data this will only sort by the first entry, experienced issue of sorting the arrays inside the array if converting
-    # to an array or to a numpy array before sorting.
-    outputdata.sort()
-    
+    outputdata = pickle.load(outputfile)
+    files_array = [line.strip() for line in open(filelist)]
+    # Add filename to the data array
+    for i in range(len(outputdata)):
+        outputdata[i]=([files_array[i]].append(outputdata))
     id_output=open(identifier+'_output','r+')
     pickle.dump(outputdata,id_output)
     id_output.close()
     
     # Separate the name of the file from the data
-    files_array = [outputdata[i][0] for i in range(len(outputdata))]
-    data_array = [outputdata[i][1:] for i in range(len(outputdata))]
-    
-    
-    
-    # Save the output data as a numpy array
-    print("Saving as numpy array...")              
-    npdata = np.array(data_array)
-    if os.path.isfile(identifier+'_dataByLightCurve.npy'):
-        os.system("rm %s"%(identifier+'_dataByLightCurve.npy'))
-
-    np.save(identifier+'_dataByLightCurve',npdata)
-    print("Data for %s saved in numpy array %s"%(len(npdata),identifier+'_dataByLightCurve.npy'))
-    
-    # This will save the calculated features as numpy arrays in a .npy file, which can be imported via np.load(file)
     
     # Create a filelist of successfully processed files for filekeeping's sake
     filelist_completed=identifier+'_filelist_completed'
     fl=open(filelist_completed,'w')    
     for fitsfile in files_array:fl.write(fitsfile+'\n')
-    
     fl.close()
     
     ### Primarily for a failed run ###
@@ -147,6 +103,28 @@ def save_output(identifier,fitsDir,filelist):
     os.system('echo %s>> %s'%(totalTime,kml_log))
 
     return
+
+def read_revant_pars(parfile):
+    pars = [line.strip() for line in open(parfile)]
+    pararr = np.zeros((len(pars), 60))
+    for i in range(len(pars)):
+        pararr[i] = np.fromstring(pars[i], dtype=float, sep=' ')
+    return pararr
+
+def read_kepler_curve(file):
+    lc = pyfits.getdata(file)
+    t = lc.field('TIME')
+    f = lc.field('PDCSAP_FLUX')
+    err = lc.field('PDCSAP_FLUX_ERR')
+    
+    f = f[np.isfinite(t)]
+    t = t[np.isfinite(t)]
+    t = t[np.isfinite(f)]
+    f = f[np.isfinite(f)]
+    
+    nf = f / np.median(f)
+
+    return t, nf, err
 
 def calc_outliers_pts(t, nf):
     # Is t really a necessary input? The answer is no, but eh
@@ -313,182 +291,235 @@ def lc_examine(filelist, style='-'):
 
     return
 
-def fcalc(nfile):
+@cuda.autojit
+def fcalc(files,f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,\
+          f11,f12,f13,f14,f15,f16,f17,f18,f19,f20,\
+          f21,f22,f23,f24,f25,f26,f27,f28,f29,f30,\
+          f31,f32,f33,f34,f35,f36,f37,f38,f39,f40,\
+          f41,f42,f43,f44,f45,f46,f47,f48,f49,f50,\
+          f51,f52,f53,f54,f55,f56,f57,f58,f59,f60):
+    bx = cuda.blockIdx.x # which block in the grid?
+    bw = cuda.blockDim.x # what is the size of a block?
+    tx = cuda.threadIdx.x # unique thread ID within a blcok
+    i = tx + bx * bw
     
-    fileStartTime = datetime.now()
-    try:
-        t,nf,err = read_kepler_curve(nfile)
+    nfile = files[i]
+   
+    t,nf,err = read_kepler_curve(nfile)
 
-        # t = time
-        # err = error
-        # nf = normalized flux. Same as mf but offset by 1 to center at 0?
+    # t = time
+    # err = error
+    # nf = normalized flux. Same as mf but offset by 1 to center at 0?
 
-        longtermtrend = np.polyfit(t, nf, 1)[0] # Feature 1 (Abbr. F1) overall slope
-        yoff = np.polyfit(t, nf, 1)[1] # Not a feature? y-intercept of linear fit
-        meanmedrat = np.mean(nf) / np.median(nf) # F2
-        skews = scipy.stats.skew(nf) # F3
-        varss = np.var(nf) # F4
-        coeffvar = np.std(nf)/np.mean(nf) #F5
-        stds = np.std(nf) #F6
+    longtermtrend = np.polyfit(t, nf, 1)[0] # Feature 1 (Abbr. F1) overall slope
+    yoff = np.polyfit(t, nf, 1)[1] # Not a feature? y-intercept of linear fit
+    meanmedrat = np.mean(nf) / np.median(nf) # F2
+    skews = scipy.stats.skew(nf) # F3
+    varss = np.var(nf) # F4
+    coeffvar = np.std(nf)/np.mean(nf) #F5
+    stds = np.std(nf) #F6
 
-        corrnf = nf - longtermtrend*t - yoff #this removes any linear slope to lc so you can look at just troughs - is this a sign err tho?
-        # D: I don't think there's a sign error
+    corrnf = nf - longtermtrend*t - yoff #this removes any linear slope to lc so you can look at just troughs - is this a sign err tho?
+    # D: I don't think there's a sign error
 
-        # Features 7 to 10
-        numoutliers, numposoutliers, numnegoutliers, numout1s = calc_outliers_pts(t, nf)
+    # Features 7 to 10
+    numoutliers, numposoutliers, numnegoutliers, numout1s = calc_outliers_pts(t, nf)
 
-        kurt = scipy.stats.kurtosis(nf)
+    kurt = scipy.stats.kurtosis(nf)
 
-        mad = np.median([abs(nf[j]-np.median(nf)) for j in range(len(nf))])
+    mad = np.median([abs(nf[j]-np.median(nf)) for j in range(len(nf))])
 
-        # slopes array contains features 13-30
-        slopes, corrslopes, secder, slopes_array = calc_slopes(t, nf, corrnf) 
+    # slopes array contains features 13-30
+    slopes, corrslopes, secder, slopes_array = calc_slopes(t, nf, corrnf) 
 
-        maxslope = slopes_array[0]
-        minslope = slopes_array[1]
-        meanpslope  = slopes_array[2]
-        meannslope  = slopes_array[3]
-        g_asymm = slopes_array[4]
-        rough_g_asymm  = slopes_array[5]
-        diff_asymm  = slopes_array[6]
-        skewslope  = slopes_array[7]
-        varabsslope  = slopes_array[8]
-        varslope  = slopes_array[9]
-        meanabsslope  = slopes_array[10]
-        absmeansecder = slopes_array[11]
-        num_pspikes = slopes_array[12]
-        num_nspikes  = slopes_array[13]
-        num_psdspikes = slopes_array[14]
-        num_nsdspikes = slopes_array[15]
-        stdratio = slopes_array[16]
-        pstrend = slopes_array[17]
+    maxslope = slopes_array[0]
+    minslope = slopes_array[1]
+    meanpslope  = slopes_array[2]
+    meannslope  = slopes_array[3]
+    g_asymm = slopes_array[4]
+    rough_g_asymm  = slopes_array[5]
+    diff_asymm  = slopes_array[6]
+    skewslope  = slopes_array[7]
+    varabsslope  = slopes_array[8]
+    varslope  = slopes_array[9]
+    meanabsslope  = slopes_array[10]
+    absmeansecder = slopes_array[11]
+    num_pspikes = slopes_array[12]
+    num_nspikes  = slopes_array[13]
+    num_psdspikes = slopes_array[14]
+    num_nsdspikes = slopes_array[15]
+    stdratio = slopes_array[16]
+    pstrend = slopes_array[17]
 
-        # Checks if the flux crosses the zero line.
-        zcrossind= [j for j in range(len(nf)-1) if corrnf[j]*corrnf[j+1]<0]
-        num_zcross = len(zcrossind) #F31
+    # Checks if the flux crosses the zero line.
+    zcrossind= [j for j in range(len(nf)-1) if corrnf[j]*corrnf[j+1]<0]
+    num_zcross = len(zcrossind) #F31
 
-        plusminus=[j for j in range(1,len(slopes)) if (slopes[j]<0)&(slopes[j-1]>0)]
-        num_pm = len(plusminus)
+    plusminus=[j for j in range(1,len(slopes)) if (slopes[j]<0)&(slopes[j-1]>0)]
+    num_pm = len(plusminus)
 
-        # peak to peak array contains features 33 - 42
-        peaktopeak_array, naivemax, naivemins = calc_maxmin_periodics(t, nf, err)
+    # peak to peak array contains features 33 - 42
+    peaktopeak_array, naivemax, naivemins = calc_maxmin_periodics(t, nf, err)
 
-        len_nmax=peaktopeak_array[0]
-        len_nmin=peaktopeak_array[1]
-        mautocorrcoef=peaktopeak_array[2]
-        ptpslopes=peaktopeak_array[3]
-        periodicity=peaktopeak_array[4]
-        periodicityr=peaktopeak_array[5]
-        naiveperiod=peaktopeak_array[6]
-        maxvars=peaktopeak_array[7]
-        maxvarsr=peaktopeak_array[8]
-        oeratio=peaktopeak_array[9]
+    len_nmax=peaktopeak_array[0]
+    len_nmin=peaktopeak_array[1]
+    mautocorrcoef=peaktopeak_array[2]
+    ptpslopes=peaktopeak_array[3]
+    periodicity=peaktopeak_array[4]
+    periodicityr=peaktopeak_array[5]
+    naiveperiod=peaktopeak_array[6]
+    maxvars=peaktopeak_array[7]
+    maxvarsr=peaktopeak_array[8]
+    oeratio=peaktopeak_array[9]
 
-        # amp here is actually amp_2 in revantese
-        # 2x the amplitude (peak-to-peak really), the 1st percentile will be negative, so it's really adding magnitudes
-        amp = np.percentile(nf,99)-np.percentile(nf,1) #F43
-        normamp = amp / np.mean(nf) #this should prob go, since flux is norm'd #F44
+    # amp here is actually amp_2 in revantese
+    # 2x the amplitude (peak-to-peak really), the 1st percentile will be negative, so it's really adding magnitudes
+    amp = np.percentile(nf,99)-np.percentile(nf,1) #F43
+    normamp = amp / np.mean(nf) #this should prob go, since flux is norm'd #F44
 
-        # ratio of points within 10% of middle to total number of points 
-        mbp = len([nf[j] for j in range(len(nf)) if (nf[j] < (np.median(nf) + 0.1*amp)) & (nf[j] > (np.median(nf)-0.1*amp))]) / len(nf) #F45
+    # ratio of points within 10% of middle to total number of points 
+    mbp = len([nf[j] for j in range(len(nf)) if (nf[j] < (np.median(nf) + 0.1*amp)) & (nf[j] > (np.median(nf)-0.1*amp))]) / len(nf) #F45
 
-        f595 = np.percentile(nf,95)-np.percentile(nf,5)
-        f1090 =np.percentile(nf,90)-np.percentile(nf,10)
-        f1782 =np.percentile(nf, 82)-np.percentile(nf, 17)
-        f2575 =np.percentile(nf, 75)-np.percentile(nf, 25)
-        f3267 =np.percentile(nf, 67)-np.percentile(nf, 32)
-        f4060 =np.percentile(nf, 60)-np.percentile(nf, 40)
-        mid20 =f4060/f595 #F46
-        mid35 =f3267/f595 #F47
-        mid50 =f2575/f595 #F48
-        mid65 =f1782/f595 #F49
-        mid80 =f1090/f595 #F50 
+    f595 = np.percentile(nf,95)-np.percentile(nf,5)
+    f1090 =np.percentile(nf,90)-np.percentile(nf,10)
+    f1782 =np.percentile(nf, 82)-np.percentile(nf, 17)
+    f2575 =np.percentile(nf, 75)-np.percentile(nf, 25)
+    f3267 =np.percentile(nf, 67)-np.percentile(nf, 32)
+    f4060 =np.percentile(nf, 60)-np.percentile(nf, 40)
+    mid20 =f4060/f595 #F46
+    mid35 =f3267/f595 #F47
+    mid50 =f2575/f595 #F48
+    mid65 =f1782/f595 #F49
+    mid80 =f1090/f595 #F50 
 
-        percentamp = max([(nf[j]-np.median(nf)) / np.median(nf) for j in range(len(nf))]) #F51
-        magratio = (max(nf)-np.median(nf)) / amp #F52
+    percentamp = max([(nf[j]-np.median(nf)) / np.median(nf) for j in range(len(nf))]) #F51
+    magratio = (max(nf)-np.median(nf)) / amp #F52
 
-        #autopdc=[nf[j+1] for j in range(len(nf)-1)] = nf[1:]
-        autocorrcoef = np.corrcoef(nf[:-1], nf[1:])[0][1] #F54
-        #autocovs = np.cov(nf[:-1], nf[1:])[0][1] # not used for anything...
+    #autopdc=[nf[j+1] for j in range(len(nf)-1)] = nf[1:]
+    autocorrcoef = np.corrcoef(nf[:-1], nf[1:])[0][1] #F54
+    #autocovs = np.cov(nf[:-1], nf[1:])[0][1] # not used for anything...
 
-        #sautopdc=[slopes[j+1] for j in range(len(slopes)-1)] = slopes[1:]
+    #sautopdc=[slopes[j+1] for j in range(len(slopes)-1)] = slopes[1:]
 
-        sautocorrcoef = np.corrcoef(slopes[:-1], slopes[1:])[0][1] #F55
-        #sautocovs = np.cov(slopes[:-1:],slopes[1:])[0][1] # not used for anything...
+    sautocorrcoef = np.corrcoef(slopes[:-1], slopes[1:])[0][1] #F55
+    #sautocovs = np.cov(slopes[:-1:],slopes[1:])[0][1] # not used for anything...
 
-        flatness = [np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])- np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemax]
+    flatness = [np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])- np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemax]
 
-        flatmean = np.nansum(flatness)/len(flatness) #F55
+    flatmean = np.nansum(flatness)/len(flatness) #F55
 
-        # trying flatness w slopes and nf rather than "corr" vals, despite orig def in RN's program
-        tflatness = [-np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])+ np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemins] 
-        # tflatness for mins, flatness for maxes
-        tflatmean = np.nansum(tflatness) / len(tflatness) #F56
+    # trying flatness w slopes and nf rather than "corr" vals, despite orig def in RN's program
+    tflatness = [-np.mean(slopes[max(0,j-6):min(j-1, len(slopes)-1):1])+ np.mean(slopes[max(0,j):min(j+4, len(slopes)-1):1]) for j in range(len(slopes)) if nf[j] in naivemins] 
+    # tflatness for mins, flatness for maxes
+    tflatmean = np.nansum(tflatness) / len(tflatness) #F56
 
-        roundness=[np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemax]
+    roundness=[np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemax]
 
-        roundmean = np.nansum(roundness) / len(roundness) #F57
+    roundmean = np.nansum(roundness) / len(roundness) #F57
 
-        troundness = [np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemins]
+    troundness = [np.mean(secder[max(0,j-6):min(j-1, len(secder)-1):1]) + np.mean(secder[max(0,j+1):min(j+6, len(secder)-1):1]) for j in range(len(secder)) if nf[j+1] in naivemins]
 
-        troundmean = np.nansum(troundness)/len(troundness) #F58
-        roundrat = roundmean / troundmean #F59
+    troundmean = np.nansum(troundness)/len(troundness) #F58
+    roundrat = roundmean / troundmean #F59
 
-        flatrat = flatmean / tflatmean #F60
-
-        # Log any files that take an abnormally long time. Average filetime should be around 1.3 seconds, looking at the ones that exceed 10x that time (so everything past 13 seconds).
-        kml_log = open(identifier+'_kml_log','a')
-        filetime = datetime.now()-fileStartTime
-        if filetime>timedelta(seconds=13):
-            kml_log.write('%s ... %s/n'%(nfile.replace(fitsDir+'/',""),filetime))
-        kml_log.close()
-
-        """
-        The output can be too large to buffer in the memory while everything is running, so my solution is to write all the data as it's processed, then go through and sort it afterwards. I'm sure there's a more elegant way to do it, but I don't know that way so this is what it is...
-
-        This takes about 3-4 times longer, but the data output is more controlled and if it fails in the middle there's still data that can be retrieved (read: doesn't need to be reprocessed and should be removed from the filelist).
-        """
-        nfile=nfile.replace(fitsDir+'/',"")
-        ndata = [nfile,longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat]
-        if not os.path.isfile(identifier+'_output'):
-            open(identifier+'_output','a').close()
-        id_output=open(identifier+'_output','a')
-        pickle.dump(ndata,id_output)
-        id_output.close()
-
-        #return longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat
+    flatrat = flatmean / tflatmean #F60
     
-    except TypeError:
-        kml_log = identifier+'_kml_log'
-        os.system('echo %s ... TYPE ERROR >> %s'%(nfile.replace(fitsDir+'/',""),kml_log))
+    f1[i],f2[i],f3[i],f4[i],f5[i],f6[i],f7[i],f8[i],f9[i],f10[i]=longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s
+    f11[i],f12[i],f13[i],f14[i],f15[i],f16[i],f17[i],f18[i],f19[i],f20[i]=kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope
+    f21[i],f22[i],f23[i],f24[i],f25[i],f26[i],f27[i],f28[i],f29[i],f30[i]=varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend
+    f31[i],f32[i],f33[i],f34[i],f35[i],f36[i],f37[i],f38[i],f39[i],f40[i]=num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars
+    f41[i],f42[i],f43[i],f44[i],f45[i],f46[i],f47[i],f48[i],f49[i],f50[i]=maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80
+    f51[i],f52[i],f53[i],f54[i],f55[i],f56[i],f57[i],f58[i],f59[i],f60[i]=percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat
+    
 
+    
 def feature_calc(filelist):
     print("Importing filelist...")
-    files = [fitsDir+'/'+line.strip() for line in open(filelist)]
-    
-    # The following runs the program for the list of files in parallel. The number in Pool() should be the number
-    # of processors available on the machine's cpu (or 1 less to let the machine keep doing other processes)
+    files = np.array([fitsDir+'/'+line.strip() for line in open(filelist)])
     print("")
     print("Calculating features...")
-    if __name__ == '__main__':
-        numcpus = cpu_count()
-        if numcpus > 1:
-            # Leave 2 cpus open for system tasks.
-            usecpus = numcpus-2
-        else:
-            usecpus = 1
-            
-        p = Pool(usecpus)
-        #data = p.map(fcalc,files)
-        p.map(fcalc,files)
-        p.close()
-        p.terminate()
-        p.join()
+    d_files = cuda.to_device(files)
+    out = np.empty(len(files))
+    d_f1,d_f2,d_f3,d_f4,d_f5,d_f6,d_f7,d_f8,d_f9,d_f10 = cuda.to_device(out),cuda.to_device(out),\
+                                                            cuda.to_device(out),cuda.to_device(out),\
+                                                            cuda.to_device(out),cuda.to_device(out),\
+                                                            cuda.to_device(out),cuda.to_device(out),\
+                                                            cuda.to_device(out),cuda.to_device(out)
+    d_f11,d_f12,d_f13,d_f14,d_f15,d_f16,d_f17,d_f18,d_f19,d_f20 = cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out)
+    d_f21,d_f22,d_f23,d_f24,d_f25,d_f26,d_f27,d_f28,d_f29,d_f30 = cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out)
+    d_f31,d_f32,d_f33,d_f34,d_f35,d_f36,d_f37,d_f38,d_f39,d_f40 = cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out)
+    d_f41,d_f42,d_f43,d_f44,d_f45,d_f46,d_f47,d_f48,d_f49,d_f50 = cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out)    
+    d_f51,d_f52,d_f53,d_f54,d_f55,d_f56,d_f57,d_f58,d_f59,d_f60 = cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out),\
+                                                                cuda.to_device(out),cuda.to_device(out)
+    
+    threads_per_block = 128
+    number_of_blocks = len(files)/128+1
+    
+    fcalc[number_of_blocks,threads_per_block](d_files,d_f1,d_f2,d_f3,d_f4,d_f5,d_f6,d_f7,d_f8,d_f9,d_f10,\
+                                              d_f11,d_f12,d_f13,d_f14,d_f15,d_f16,d_f17,d_f18,d_f19,d_f20,\
+                                              d_f21,d_f22,d_f23,d_f24,d_f25,d_f26,d_f27,d_f28,d_f29,d_f30,\
+                                              d_f31,d_f32,d_f33,d_f34,d_f35,d_f36,d_f37,d_f38,d_f39,d_f40,\
+                                              d_f41,d_f42,d_f43,d_f44,d_f45,d_f46,d_f47,d_f48,d_f49,d_f50,\
+                                              d_f51,d_f52,d_f53,d_f54,d_f55,d_f56,d_f57,d_f58,d_f59,d_f60)
+    
+    f1,f2,f3,f4,f5,f6,f7,f8,f9,f10 = d_f1.copy_to_host(),d_f2.copy_to_host(),d_f3.copy_to_host(),\
+                                                        d_f4.copy_to_host(),d_f5.copy_to_host(),d_f6.copy_to_host(),\
+                                                        d_f7.copy_to_host(),d_f8.copy_to_host(),d_f9.copy_to_host(),\
+                                                        d_f10.copy_to_host()
+    f11,f12,f13,f14,f15,f16,f17,f18,f19,f20 = d_f11.copy_to_host(),d_f12.copy_to_host(),d_f13.copy_to_host(),\
+                                                        d_f14.copy_to_host(),d_f15.copy_to_host(),d_f16.copy_to_host(),\
+                                                        d_f17.copy_to_host(),d_f18.copy_to_host(),d_f19.copy_to_host(),\
+                                                        d_f20.copy_to_host()
+    f21,f22,f23,f24,f25,f26,f27,f28,f29,f30 = d_f21.copy_to_host(),d_f22.copy_to_host(),d_f23.copy_to_host(),\
+                                                        d_f24.copy_to_host(),d_f25.copy_to_host(),d_f26.copy_to_host(),\
+                                                        d_f27.copy_to_host(),d_f28.copy_to_host(),d_f29.copy_to_host(),\
+                                                        d_f30.copy_to_host()
+    f31,f32,f33,f34,f35,f36,f37,f38,f39,f40 = d_f31.copy_to_host(),d_f32.copy_to_host(),d_f33.copy_to_host(),\
+                                                        d_f34.copy_to_host(),d_f35.copy_to_host(),d_f36.copy_to_host(),\
+                                                        d_f37.copy_to_host(),d_f38.copy_to_host(),d_f39.copy_to_host(),\
+                                                        d_f40.copy_to_host()
+    f41,f42,f43,f44,f45,f46,f47,f48,f49,f50 = d_f41.copy_to_host(),d_f42.copy_to_host(),d_f43.copy_to_host(),\
+                                                        d_f44.copy_to_host(),d_f45.copy_to_host(),d_f46.copy_to_host(),\
+                                                        d_f47.copy_to_host(),d_f48.copy_to_host(),d_f49.copy_to_host(),\
+                                                        d_f50.copy_to_host()   
+    f51,f52,f53,f54,f55,f56,f57,f58,f59,f60 = d_f51.copy_to_host(),d_f52.copy_to_host(),d_f53.copy_to_host(),\
+                                                        d_f54.copy_to_host(),d_f55.copy_to_host(),d_f56.copy_to_host(),\
+                                                        d_f57.copy_to_host(),d_f58.copy_to_host(),d_f59.copy_to_host(),\
+                                                        d_f60.copy_to_host()
+    output = []
+    for i in range(len(files)):
+        output.append([f1[i],f2[i],f3[i],f4[i],f5[i],f6[i],f7[i],f8[i],f9[i],\
+                f10[i],f11[i],f12[i],f13[i],f14[i],f15[i],f16[i],f17[i],f18[i],f19[i],\
+                f20[i],f21[i],f22[i],f23[i],f24[i],f25[i],f26[i],f27[i],f28[i],f29[i],\
+                f30[i],f31[i],f32[i],f33[i],f34[i],f35[i],f36[i],f37[i],f38[i],f39[i],\
+                f40[i],f41[i],f42[i],f43[i],f44[i],f45[i],f46[i],f47[i],f48[i],f49[i],\
+                f50[i],f51[i],f52[i],f53[i],f54[i],f55[i],f56[i],f57[i],f58[i],f59[i],f60[i]])
+    if not os.path.isfile(identifier+'_output'):
+        open(identifier+'_output','a').close()
+    id_output=open(identifier+'_output','a')
+    pickle.dump(output,id_output)
+    id_output.close()
+    
     print("Features Calculated")
-    #return data
-
-# 'data' contains the output as arrays of all the features for each lightcurve, necessary for clustering
-#data = feature_calc(filelist)
 
 
 """
