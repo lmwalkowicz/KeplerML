@@ -427,8 +427,8 @@ def fcalc(nfile):
         # Log any files that take an abnormally long time. Average filetime should be around 1.3 seconds, looking at the ones that exceed 10x that time (so everything past 13 seconds).
         kml_log = open(identifier+'_kml_log','a')
         filetime = datetime.now()-fileStartTime
-        if filetime>timedelta(seconds=13):
-            kml_log.write('%s ... %s/n'%(nfile.replace(fitsDir+'/',""),filetime))
+        if filetime>timedelta(minutes=1):
+            kml_log.write('%s ... %s\n'%(nfile.replace(fitsDir+'/',""),filetime))
         kml_log.close()
 
         """
@@ -457,7 +457,7 @@ def feature_calc(filelist):
     print("Calculating features...")
     if __name__ == '__main__':
         numcpus = cpu_count()
-        usecpus = numcpus*5
+        usecpus = numcpus*7
         p = Pool(usecpus)
         p.map(fcalc,files)
         p.close()
