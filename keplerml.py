@@ -300,22 +300,12 @@ def lc_examine(filelist, style='-'):
         plt.show()
 
     return
-def fcalc(tarr,nfarr,l,out):
-    try:
-        bx = cuda.blockIdx.x # which block in the grid?
-        bw = cuda.blockDim.x # what is the size of a block?
-        tx = cuda.threadIdx.x # unique thread ID within a blcok
-        i = tx + bx * bw
-        if i>0:
-            start=sum(l[0:i])
-        else:
-            start=0
-        length = l[i]
-        t=t_arr[start:start+length]
-        nf=nf_arr[start:start+length]
 
-        if i > c.size:
-            return
+def fcalc(nfile):
+    
+    fileStartTime = datetime.now()
+    try:
+        t,nf,err = read_kepler_curve(nfile)
 
         # t = time
         # err = error
@@ -433,18 +423,29 @@ def fcalc(tarr,nfarr,l,out):
         roundrat = roundmean / troundmean #F59
 
         flatrat = flatmean / tflatmean #F60
-        
+
+        # Log any files that take an abnormally long time. Average filetime should be around 1.3 seconds, looking at the ones that exceed 10x that time (so everything past 13 seconds).
+        kml_log = open(identifier+'_kml_log','a')
+        filetime = datetime.now()-fileStartTime
+        if filetime>timedelta(minutes=1):
+            kml_log.write('%s ... %s\n'%(nfile.replace(fitsDir+'/',""),filetime))
+        kml_log.close()
+
         """
         The output can be too large to buffer in the memory while everything is running, so my solution is to write all the data as it's processed, then go through and sort it afterwards. I'm sure there's a more elegant way to do it, but I don't know that way so this is what it is...
         This takes about 3-4 times longer, but the data output is more controlled and if it fails in the middle there's still data that can be retrieved (read: doesn't need to be reprocessed and should be removed from the filelist).
         """
-
-        ndata = [longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat]
-        for j in range(60):
-            out[i*60+j]=ndata[j]
+        nfile=nfile.replace(fitsDir+'/',"")
+        ndata = [nfile,longtermtrend, meanmedrat, skews, varss, coeffvar, stds, numoutliers, numnegoutliers, numposoutliers, numout1s, kurt, mad, maxslope, minslope, meanpslope, meannslope, g_asymm, rough_g_asymm, diff_asymm, skewslope, varabsslope, varslope, meanabsslope, absmeansecder, num_pspikes, num_nspikes, num_psdspikes, num_nsdspikes,stdratio, pstrend, num_zcross, num_pm, len_nmax, len_nmin, mautocorrcoef, ptpslopes, periodicity, periodicityr, naiveperiod, maxvars, maxvarsr, oeratio, amp, normamp,mbp, mid20, mid35, mid50, mid65, mid80, percentamp, magratio, sautocorrcoef, autocorrcoef, flatmean, tflatmean, roundmean, troundmean, roundrat, flatrat]
+        if not os.path.isfile(identifier+'_output'):
+            open(identifier+'_output','a').close()
+        id_output=open(identifier+'_output','a')
+        pickle.dump(ndata,id_output)
+        id_output.close()
     
     except TypeError:
-        return
+        kml_log = identifier+'_kml_log'
+        os.system('echo %s ... TYPE ERROR >> %s'%(nfile.replace(fitsDir+'/',""),kml_log))
 
 def feature_calc(filelist):
     print("Importing filelist...")
@@ -454,47 +455,19 @@ def feature_calc(filelist):
     # of processors available on the machine's cpu (or 1 less to let the machine keep doing other processes)
     print("")
     print("Calculating features...")
-    # Use cpu multiprocessing to 
     if __name__ == '__main__':
         numcpus = cpu_count()
-        usecpus = numcpus
+        usecpus = numcpus*7
         p = Pool(usecpus)
-        lc=p.map(read_kepler_curve,files)
+        p.map(fcalc,files)
         p.close()
         p.join()
     print("Features Calculated")
-    
-    t,nf,l=np.append(lc[0]),np.append(lc[1]),lc[2]
+    #return data
 
-    device = cuda.get_current_device()
+# 'data' contains the output as arrays of all the features for each lightcurve, necessary for clustering
+#data = feature_calc(filelist)
 
-    n = 100
-
-    # Assign equivalent storage on device
-    dt = cuda.to_device(t)
-    dnf = cuda.to_device(nf)
-    dl = cuda.to_device(l)
-    # Assign storage on device for output
-    out = np.zeros(len(files)*60)
-    dout = cuda.to_device(out)
-
-    # Set up enough threads for kernel
-    tpb = device.WARP_SIZE
-    bpg = int(np.ceil(float(n)/tpb))
-
-    # Launch kernel
-    cu_add1[bpg, tpb](dt, dnf, dl, dout)
-
-    # Transfer output from device to host
-    out = dout.copy_to_host()
-    
-    for i in range(len(files)):
-        ndata=[files[i],out[i*60:i*60+59]]
-        if not os.path.isfile(identifier+'_output'):
-            open(identifier+'_output','a').close()
-        id_output=open(identifier+'_output','a')
-        pickle.dump(ndata,id_output)
-        id_output.close()
 
 """
 Run the program on the filelist chosen.
