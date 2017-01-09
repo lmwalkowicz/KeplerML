@@ -457,7 +457,7 @@ def feature_calc(filelist):
     print("Calculating features...")
     if __name__ == '__main__':
         numcpus = cpu_count()
-        usecpus = numcpus*7
+        usecpus = numcpus*4
         p = Pool(usecpus)
         p.map(fcalc,files)
         p.close()
