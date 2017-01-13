@@ -17,7 +17,7 @@ from numpy import float64
 #import cython
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
-from sklearn.cluster import DBSCAN,Ward
+from sklearn.cluster import DBSCAN
 from numpy.random import RandomState
 #rng = RandomState(42)
 import itertools
@@ -176,10 +176,11 @@ def optimalK(X):
 
 Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
 output = askopenfilename()
-
+print(output)
 if output:
     outputfile = open(output,'r+') # show an "Open" dialog box and return the path to the selected file
     outputdata = []
+    print("Importing Data...")
     while True:
         try:
             o = pickle.load(outputfile)
@@ -188,7 +189,14 @@ if output:
         else:
             outputdata.append(o)
     outputfile.close()
+    
+    if len(outputdata) == 1:
+        outputdata = outputdata[0]
+        
+    files = [outputdata[i][0] for i in range(len(outputdata))\
+             if not np.isnan(outputdata[i][1:]).any() and not np.isinf(outputdata[i][1:]).any()]
+    data = np.array([outputdata[i][1:] for i in range(len(outputdata))\
+             if not np.isnan(outputdata[i][1:]).any() and not np.isinf(outputdata[i][1:]).any()])
 
-    files = [outputdata[i][0] for i in range(len(outputdata))]
-    data = np.array([outputdata[i][1:] for i in range(len(outputdata))])
+    print("Finding optimal k...")
     print optimalK(data)
