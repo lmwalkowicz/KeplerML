@@ -1,4 +1,3 @@
-import ast
 import random
 import numpy as np
 np.set_printoptions(threshold='nan')
@@ -7,66 +6,97 @@ from scipy import stats
 import pyfits
 import math
 import pylab as pl
-import matplotlib.pyplot as plt
-import heapq
-from operator import xor
 import scipy.signal
 from numpy import float64
-#import astroML.time_series
-#import astroML_addons.periodogram
-#import cython
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-from sklearn.cluster import DBSCAN
 from numpy.random import RandomState
-#rng = RandomState(42)
-import itertools
-import commands
-# import utils
-import itertools
-#from astropy.io import fits
-from multiprocessing import Pool
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.widgets import RadioButtons
+from multiprocessing import Pool,cpu_count
 import sys
-import cPickle as pickle
-if sys.version_info[0] < 3:
-    from Tkinter import Tk
-else:
-    from tkinter import Tk
+from datetime import datetime
+from numbapro import cuda
 
-from tkFileDialog import askopenfilename,askdirectory
+@cuda.autojit
+def cu_worker(x1, x2, mu, bmk):
+    bx =cuda.blockIdx.x
+    bw = cuda.blockDim.x
+    tx = cuda.threadIdx.x
+    j = tx+bx*bw
+    
+    if j>bmk.size:
+        return
+    num = 0
+    for i in range(len(mu)):
+        numold = num
+        num = ((x1[j]-mu[i][0])**2+(x2[j]-mu[i][1])**2)**.5
+        if num<numold or i==0:
+            bmk[j]=i
+
+def gpumulti(X,mu):
+    device = cuda.get_current_device()
+    
+    n=len(X)
+    X=np.array(X)
+    x1 = np.array(X[:,0])
+    x2 = np.array(X[:,1])
+    
+    bmk = np.arange(len(x1))
+    
+    mu = np.array(mu)
+    
+    dx1 = cuda.to_device(x1)
+    dx2 = cuda.to_device(x2)
+    dmu = cuda.to_device(mu)
+    dbmk = cuda.to_device(bmk)
+    
+    # Set up enough threads for kernel
+    tpb = device.WARP_SIZE
+    bpg = int(np.ceil(float(n)/tpb))
+        
+    cu_worker[bpg,tpb](dx1,dx2,dmu,dbmk)
+    
+    bestmukey = dbmk.copy_to_host()
+    
+    return bestmukey
 
 def cluster_points(X, mu):
-    clusters  = {}
-    for x in X:
-        bestmukey = min([(i[0], np.linalg.norm(x-mu[i[0]])) for i in enumerate(mu)], key=lambda t:t[1])[0]
-        try:
-            clusters[bestmukey].append(x)
-        except KeyError:
-            clusters[bestmukey] = [x]
+    bestmukey = gpumulti(X,mu)
+    
+    bestmukey=np.array(bestmukey)
+    X=np.array(X)
+    clusters=[X[bestmukey==i] for i in range(min(bestmukey),max(bestmukey+1))]
+    
     return clusters
  
 def reevaluate_centers(mu, clusters):
-    newmu = []
-    keys = sorted(clusters.keys())
-    for k in keys:
-        newmu.append(np.mean(clusters[k], axis = 0))
+    keys = enumerate(clusters)
+    newmu=[np.mean(clusters[k[0]], axis = 0) for k in keys]
     return newmu
 
 def has_converged(mu, oldmu):
     return (set([tuple(a) for a in mu]) == set([tuple(a) for a in oldmu]))
 
 def find_centers(X, K):
+
     # Initialize to K random centers
     oldmu = random.sample(X, K)
     mu = random.sample(X, K)
+    count = 0
     while not has_converged(mu, oldmu):
+        # Sometimes it gets stuck and never converges (at least after 10+ hours...)
+        # Try resetting mu and oldmu after a sufficient number of iterations, 
+        # typically converges w/in 50 iterations 
+        if count > 100:
+            oldmu = random.sample(X,K)
+            mu = random.sample(X,K)
+            count = 0
+        
         oldmu = mu
         # Assign all points in X to clusters
-        clusters = cluster_points(X, mu)
+        
+        clusters = cluster_points(X,mu)
+        
         # Reevaluate centers
         mu = reevaluate_centers(oldmu, clusters)
+            
     return(mu, clusters)
 
 def Wk(mu, clusters):
@@ -76,127 +106,57 @@ def Wk(mu, clusters):
 
 def bounding_box(X):
     # X is the data that comes in, it's organized by lightcurve[[all features for lc 1],[features for lc2],...]
-    
+    numFeats = len(X[0])
+    numFiles = len(X)
     # Xbyfeature is an array organized by feature. [[all feature 1 data],[all feature 2 data],...] 
-    Xbyfeature = [[X[i][j] for i in range(len(X))] for j in range(len(X[0]))]
+    Xbyfeature = [[X[i][j] for i in range(numFiles)] for j in range(numFeats)]
 
     # xmin/xmax will be an array of the minimum/maximum values of the features
     xmin=[]
     xmax=[]
-    for feature in range(60):
-        xmin.append(min(Xbyfeature[feature]))
-        xmax.append(max(Xbyfeature[feature]))
+    for ft in range(numFeats):
+        xmin.append(min(Xbyfeature[ft]))
+        xmax.append(max(Xbyfeature[ft]))
         
     return (xmin,xmax)
-
-def montecarlogauss(n):
-    xmin = np.load('xmin.npy')
-    xmax = np.load('xmax.npy')
-    Xbn = [random.uniform(xmin[j],xmax[j]) for j in range(60)]
-    return Xbn
         
 def gap_statistic(k):
-    X = np.load('tempdata.npy')
+    
     (xmin,xmax) = bounding_box(X)
-    
-    # temporary npy files for multiprocessing
-    np.save('xmin',xmin)
-    np.save('xmax',xmax)
-    
+        
+    numFeats = len(xmin)
     mu, clusters = find_centers(X,k)
+
     Wks = np.log(Wk(mu, clusters))
     # Create B reference datasets
     B = 10
     BWkbs = np.zeros(B)
+
     for i in range(B):
-        # create random distribution of n points in the bounding hypercube, this is time consuming
-        # with hundreds of thousands of points. Multiprocessing solution? see comments in section, might work
-        Xb = []
-            
-        numcpus = cpu_count()
-        if numcpus > 1:
-            # Leave 1 cpu open for system tasks.
-            usecpus = numcpus-1
-        else:
-            usecpus = 1
-            
-        p = Pool(usecpus)
-        Xb = p.map(monteCarloGauss,range(len(X)))
-        p.close()
-        p.terminate()
-        p.join()
-        """
-        for n in range(len(X)):
-            Xb.append([random.uniform(xmin[j],xmax[j]) for j in range(60)])
-        """
-        Xb = np.array(Xb)
-        mu, clusters = find_centers(Xb,k)
+        Xb = np.array([[random.uniform(xmin[j],xmax[j]) for j in range(numFeats)] for n in range(len(X))])
+        mu, clusters = find_centers(Xb,k)    
         BWkbs[i] = np.log(Wk(mu, clusters))
-    
-    os.remove('xmin.npy')
-    os.remove('xmax.npy')
-    
+
     Wkbs = sum(BWkbs)/B
     sk = np.sqrt(sum((BWkbs-Wkbs)**2)/B)*np.sqrt(1+1/B)
     gs = Wkbs - Wks
-    
+
     return gs,sk
 
 def optimalK(X):
-    # resaving the data as tempdata (generic name) so that it can be read by the main loop
-    np.save('tempdata',X)
 
     # Dispersion for real distribution
     ### Adjust range of clusters tried here:
-    ks = range(1,10)
+    ks = range(1,11)
     Wks = np.zeros(len(ks))
     Wkbs = np.zeros(len(ks))
     sk = np.zeros(len(ks))
     gs = np.zeros(len(ks))
-    for k in ks:
-        gapstat = gap_statistic(k)
+    
     for indk,k in enumerate(ks):
-        gs[indk] = gapstat[indk][0]
-        sk[indk] = gapstat[indk][1]   
-    """
-    if __name__ == '__main__':    
-        # probably not the best way to make this run faster... but it makes it 10x faster for now
-        p = Pool(10)
-        gapstat = p.map(gap_statistic,ks)
-        for indk,k in enumerate(ks):
-            gs[indk] = gapstat[indk][0]
-            sk[indk] = gapstat[indk][1]
-        p.close()
-        p.terminate()
-        p.join()
-    """        
-    # deleting the temporary data file.
-    os.remove('tempdata.npy')
+        gs[indk],sk[indk] = gap_statistic(k)
+
     return min([k for k in range(1,len(ks)-1) if gs[k]-(gs[k+1]-sk[k+1]) >= 0])
 
-Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
-output = askopenfilename()
-print(output)
-if output:
-    outputfile = open(output,'r+') # show an "Open" dialog box and return the path to the selected file
-    outputdata = []
-    print("Importing Data...")
-    while True:
-        try:
-            o = pickle.load(outputfile)
-        except EOFError:
-            break
-        else:
-            outputdata.append(o)
-    outputfile.close()
-    
-    if len(outputdata) == 1:
-        outputdata = outputdata[0]
-        
-    files = [outputdata[i][0] for i in range(len(outputdata))\
-             if not np.isnan(outputdata[i][1:]).any() and not np.isinf(outputdata[i][1:]).any()]
-    data = np.array([outputdata[i][1:] for i in range(len(outputdata))\
-             if not np.isnan(outputdata[i][1:]).any() and not np.isinf(outputdata[i][1:]).any()])
-
-    print("Finding optimal k...")
-    print optimalK(data)
+print("Finding optimal k...")
+print optimalK(data)
