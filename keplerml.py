@@ -18,7 +18,12 @@ def fl_files_w_path(fl,fitsDir):
     """
     Returns an array with the files with the full path in the given filelist, with the given path
     """
-    return [fitsDir+'/'+line.strip() for line in open(fl)]
+    fcreate = open(fl.replace('.txt',"")+"_completed.txt",'a')
+    fcreate.close()
+    with open(fl.replace('.txt',"")+"_completed.txt",'r+') as f:
+        completed = [fitsDir+'/'+line.strip() for line in f]
+    
+    return [fitsDir+'/'+line.strip() for line in open(fl) if line not in completed]
 
 def read_kepler_curve(file):
     """
@@ -43,15 +48,15 @@ def read_kepler_curve(file):
 def clean_up(fl,fitsDir,in_file='tmp_data.csv'):
     """
     Primarily for a failed run.
-    Removes files from the filelist if they've already been processed.
     Creates a completed filelist 
-    and removes the original filelist if all files have been processed.
+    and removes the original filelist 
+    if all files have been processed.
     """
     
     files = fl_files(fl)
     df = pd.read_csv(in_file,index_col=0)
     
-    with open(fl+'_completed','a') as f:
+    with open(fl.replace('.txt',"")+'_completed.txt','a') as f:
         for lc in df.index:
             f.write('%s\n'%lc)
             files.remove(lc)
@@ -59,9 +64,6 @@ def clean_up(fl,fitsDir,in_file='tmp_data.csv'):
     if files==[]:
         print("All files from original filelist processed, deleting original filelist.")
         os.remove(fl)
-    else:
-        with open(fl,'w') as flupdate:
-            for line in files:flupdate.write(line+'\n')
 
     os.remove('tmp_data.csv')
     return
@@ -78,7 +80,7 @@ def save_output(out_file,in_file='tmp_data.csv'):
     
     return
 
-def featureCalculation(t,nf,err):
+def featureCalculation(nfile,t,nf,err):
     """
     This is the primary function of this code, it takes in light curve data and returns 60 derived features.
     """
@@ -403,7 +405,7 @@ def features_from_fits(nfile):
     # t = time
     # err = error
     # nf = normalized flux.
-    features = featureCalculation(t,nf,err)
+    features = featureCalculation(nfile,t,nf,err)
     if __name__=="__main__":
         return
     else:
